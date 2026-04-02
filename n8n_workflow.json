@@ -1,0 +1,201 @@
+{
+  "name": "Telemost Meeting Recorder",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": ["message"],
+        "additionalFields": {}
+      },
+      "name": "Telegram Trigger",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1,
+      "position": [200, 300]
+    },
+    {
+      "parameters": {
+        "dataType": "string",
+        "value1": "={{ $json.message.text.split(' ')[0] }}",
+        "rules": {
+          "rules": [
+            {
+              "value2": "/meeting_start",
+              "output": 0
+            },
+            {
+              "value2": "/meeting_stop",
+              "output": 1
+            }
+          ]
+        },
+        "fallbackOutput": 2
+      },
+      "name": "Route Command",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 1,
+      "position": [420, 300]
+    },
+
+    {
+      "parameters": {
+        "command": "={{ 'TELEMOST_TOKEN=' + $env.TELEMOST_TOKEN + ' RECORDINGS_DIR=/opt/recordings/telemost /opt/telemost/start_meeting.sh \"' + ($json.message.text.replace('/meeting_start', '').trim() || 'Встреча ' + new Date().toLocaleString('ru-RU')) + '\"' }}"
+      },
+      "name": "Start Meeting",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [660, 160]
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json.stdout;\ntry {\n  const state = JSON.parse(raw);\n  return [{ json: state }];\n} catch(e) {\n  throw new Error('start_meeting.sh output: ' + raw);\n}"
+      },
+      "name": "Parse Start State",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [880, 160]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Telegram Trigger').first().json.message.chat.id }}",
+        "text": "=✅ Встреча создана!\n\n📋 *{{ $json.title }}*\n🔗 Ссылка: {{ $json.join_url }}\n\n🔴 Запись идёт. Для остановки: /meeting\\_stop",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "name": "Send Join URL",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [1100, 160]
+    },
+
+    {
+      "parameters": {
+        "command": "/opt/telemost/stop_meeting.sh"
+      },
+      "name": "Stop Meeting",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [660, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json.stdout;\ntry {\n  const state = JSON.parse(raw);\n  return [{ json: state }];\n} catch(e) {\n  if (raw.includes('error')) throw new Error(raw);\n  throw new Error('stop_meeting.sh output: ' + raw);\n}"
+      },
+      "name": "Parse Stop State",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [880, 400]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Telegram Trigger').first().json.message.chat.id }}",
+        "text": "=⏹ Запись остановлена.\n📁 Файл: `{{ $json.file }}`\n⏱ Длительность: {{ Math.round($json.duration_sec / 60) }} мин\n\n⏳ Запускаю транскрибацию...",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "name": "Notify Stop",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [1100, 400]
+    },
+    {
+      "parameters": {
+        "command": "={{ 'YC_FOLDER_ID=' + $env.YC_FOLDER_ID + ' YC_API_KEY=' + $env.YC_API_KEY + ' YC_S3_BUCKET=' + $env.YC_S3_BUCKET + ' YC_S3_KEY_ID=' + $env.YC_S3_KEY_ID + ' YC_S3_SECRET=' + $env.YC_S3_SECRET + ' python3 /opt/telemost/transcribe.py \"' + $('Parse Stop State').first().json.file + '\" \"' + $('Parse Stop State').first().json.title + '\"' }}"
+      },
+      "name": "Run Transcription",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [1320, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json.stdout;\ntry {\n  return [{ json: JSON.parse(raw) }];\n} catch(e) {\n  throw new Error('transcribe.py output: ' + raw.substring(0, 500));\n}"
+      },
+      "name": "Parse Transcript",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1540, 400]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "schema": "public",
+        "table": "meeting_transcripts",
+        "columns": "title,file_path,transcript,utterances,speaker_count,transcribed_at",
+        "additionalFields": {}
+      },
+      "name": "Save to Supabase",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [1760, 320],
+      "credentials": {
+        "postgres": {
+          "name": "Supabase Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Telegram Trigger').first().json.message.chat.id }}",
+        "text": "=📝 *{{ $('Parse Transcript').first().json.title }}*\n\n👥 Участников: {{ $('Parse Transcript').first().json.speaker_count }}\n💬 Реплик: {{ $('Parse Transcript').first().json.utterance_count }}\n\n{{ $('Parse Transcript').first().json.transcript.substring(0, 3000) }}{{ $('Parse Transcript').first().json.transcript.length > 3000 ? '\\n\\n...(полный текст сохранён в БД)' : '' }}",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "name": "Send Transcript",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [1760, 480]
+    },
+
+    {
+      "parameters": {
+        "chatId": "={{ $('Telegram Trigger').first().json.message.chat.id }}",
+        "text": "Неизвестная команда.\n\nДоступные команды:\n/meeting\\_start [название] — создать и записать встречу\n/meeting\\_stop — остановить запись и транскрибировать",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "name": "Unknown Command",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [660, 560]
+    }
+  ],
+  "connections": {
+    "Telegram Trigger": {
+      "main": [[{ "node": "Route Command", "type": "main", "index": 0 }]]
+    },
+    "Route Command": {
+      "main": [
+        [{ "node": "Start Meeting", "type": "main", "index": 0 }],
+        [{ "node": "Stop Meeting", "type": "main", "index": 0 }],
+        [{ "node": "Unknown Command", "type": "main", "index": 0 }]
+      ]
+    },
+    "Start Meeting": {
+      "main": [[{ "node": "Parse Start State", "type": "main", "index": 0 }]]
+    },
+    "Parse Start State": {
+      "main": [[{ "node": "Send Join URL", "type": "main", "index": 0 }]]
+    },
+    "Stop Meeting": {
+      "main": [[{ "node": "Parse Stop State", "type": "main", "index": 0 }]]
+    },
+    "Parse Stop State": {
+      "main": [[{ "node": "Notify Stop", "type": "main", "index": 0 }]]
+    },
+    "Notify Stop": {
+      "main": [[{ "node": "Run Transcription", "type": "main", "index": 0 }]]
+    },
+    "Run Transcription": {
+      "main": [[{ "node": "Parse Transcript", "type": "main", "index": 0 }]]
+    },
+    "Parse Transcript": {
+      "main": [
+        [{ "node": "Save to Supabase", "type": "main", "index": 0 }],
+        [{ "node": "Send Transcript", "type": "main", "index": 0 }]
+      ]
+    }
+  }
+}

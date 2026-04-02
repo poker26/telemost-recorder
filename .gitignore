@@ -1,0 +1,8 @@
+*.ogg
+*.webm
+*.mp4
+*.log
+/recordings/
+__pycache__/
+*.pyc
+.env
