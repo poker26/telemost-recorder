@@ -125,9 +125,33 @@ await page.setUserAgent(
 );
 
 await page.goto(joinUrl, { waitUntil: "networkidle2", timeout: 30000 });
+console.error("[recorder] Страница загружена");
 
-console.error("[recorder] Страница загружена, ожидаем 5 сек для инициализации...");
-await new Promise((r) => setTimeout(r, 5000));
+await new Promise((r) => setTimeout(r, 3000));
+
+const BOT_NAME = process.env.BOT_DISPLAY_NAME || "Бот-записи";
+
+const nameInput = await page.$('input[placeholder*="имя"], input[name*="name"], input[type="text"]');
+if (nameInput) {
+  await nameInput.click({ clickCount: 3 });
+  await nameInput.type(BOT_NAME);
+  console.error(`[recorder] Имя бота: ${BOT_NAME}`);
+}
+
+const joinButton = await page.evaluateHandle(() => {
+  const buttons = [...document.querySelectorAll("button, [role='button']")];
+  return buttons.find((b) => /подключиться|присоединиться|join/i.test(b.textContent));
+});
+
+if (joinButton && joinButton.asElement()) {
+  await joinButton.asElement().click();
+  console.error("[recorder] Нажата кнопка Подключиться");
+} else {
+  console.error("[recorder] WARN: Кнопка Подключиться не найдена");
+}
+
+console.error("[recorder] Ожидаем подключение к конференции (10 сек)...");
+await new Promise((r) => setTimeout(r, 10000));
 
 // ── Start recording ──────────────────────────────────────────────────────────
 
