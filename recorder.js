@@ -7,12 +7,18 @@
  *   node recorder.js <join_url> <output_file>
  *
  * Остановка:
- *   Отправить SIGINT (Ctrl+C) или SIGTERM — бот корректно завершит запись.
+ *   Отправить SIGTERM — бот корректно завершит запись.
+ *
+ * Требования:
+ *   apt install xvfb
+ *   npm install puppeteer-stream xvfb
  */
 
 import { launch, getStream } from "puppeteer-stream";
-import { createWriteStream } from "fs";
-import { resolve } from "path";
+import { createWriteStream, existsSync, readdirSync } from "fs";
+import { resolve, join } from "path";
+import { homedir } from "os";
+import Xvfb from "xvfb";
 
 const joinUrl = process.argv[2];
 const outputFile = process.argv[3];
@@ -25,13 +31,6 @@ if (!joinUrl || !outputFile) {
 const outputPath = resolve(outputFile);
 console.error(`[recorder] join_url: ${joinUrl}`);
 console.error(`[recorder] output:   ${outputPath}`);
-
-const fileStream = createWriteStream(outputPath);
-
-import { homedir } from "os";
-import { existsSync } from "fs";
-import { join } from "path";
-import { readdirSync } from "fs";
 
 function findPuppeteerChrome() {
   const cacheDir = join(homedir(), ".cache", "puppeteer", "chrome");
@@ -51,9 +50,26 @@ if (!executablePath) {
 }
 console.error(`[recorder] Chrome: ${executablePath}`);
 
+const xvfb = new Xvfb({
+  silent: true,
+  xvfb_args: ["-screen", "0", "1280x720x24", "-ac"],
+});
+
+xvfb.start((err) => {
+  if (err) {
+    console.error("[recorder] Xvfb не запустился:", err.message);
+    process.exit(1);
+  }
+});
+
+console.error(`[recorder] Xvfb display: ${xvfb._display}`);
+
+const fileStream = createWriteStream(outputPath);
+
 const browser = await launch({
-  headless: "new",
+  headless: false,
   executablePath,
+  defaultViewport: null,
   ignoreDefaultArgs: ["--mute-audio"],
   args: [
     "--no-sandbox",
@@ -62,6 +78,8 @@ const browser = await launch({
     "--use-fake-ui-for-media-stream",
     "--use-fake-device-for-media-stream",
     "--disable-gpu",
+    "--window-size=1280,720",
+    `--display=${xvfb._display}`,
   ],
 });
 
@@ -69,13 +87,13 @@ const page = await browser.newPage();
 
 await page.setUserAgent(
   "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) " +
-  "Chrome/131.0.0.0 Safari/537.36"
+    "Chrome/131.0.0.0 Safari/537.36"
 );
 
 await page.goto(joinUrl, { waitUntil: "networkidle2", timeout: 30000 });
 
 console.error("[recorder] Страница загружена, ожидаем 5 сек для инициализации...");
-await new Promise((resolve) => setTimeout(resolve, 5000));
+await new Promise((r) => setTimeout(r, 5000));
 
 const audioStream = await getStream(page, {
   audio: true,
@@ -94,19 +112,11 @@ async function stopRecording() {
 
   console.error("[recorder] Останавливаем запись...");
 
-  try {
-    audioStream.destroy();
-  } catch {}
-
-  await new Promise((resolve) => setTimeout(resolve, 1000));
-
-  try {
-    fileStream.end();
-  } catch {}
-
-  try {
-    await browser.close();
-  } catch {}
+  try { audioStream.destroy(); } catch {}
+  await new Promise((r) => setTimeout(r, 1000));
+  try { fileStream.end(); } catch {}
+  try { await browser.close(); } catch {}
+  try { xvfb.stop(); } catch {}
 
   console.error(`[recorder] Запись сохранена: ${outputPath}`);
   process.exit(0);
