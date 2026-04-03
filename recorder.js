@@ -78,6 +78,7 @@ const browser = await launch({
     "--use-fake-ui-for-media-stream",
     "--use-fake-device-for-media-stream",
     "--disable-gpu",
+    "--allowlisted-extension-id=jjndjgheafjngoipoacpjgeicjeomjli",
     "--window-size=1280,720",
     `--display=${xvfb._display}`,
   ],
