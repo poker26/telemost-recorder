@@ -13,7 +13,7 @@ FFmpeg захватывает HLS-поток → .ogg файл на сервер
         ↓
 Telegram-команда /meeting_stop
         ↓
-n8n → transcribe.py → Yandex Object Storage → SpeechKit async
+n8n → transcribe.py → MinIO → SpeechKit async
         ↓
 Транскрипт с диаризацией спикеров → Supabase + Telegram
 ```
@@ -31,7 +31,8 @@ n8n → transcribe.py → Yandex Object Storage → SpeechKit async
 ## Требования
 
 - Яндекс 360 для бизнеса (аккаунт на домене организации)
-- Yandex Cloud: SpeechKit + Object Storage
+- Yandex Cloud: SpeechKit
+- MinIO (S3-compatible) с публичным endpoint для доступа SpeechKit к аудио
 - n8n на сервере
 - `ffmpeg`, `jq`, `python3`, `boto3`, `requests`
 
@@ -57,9 +58,8 @@ chmod +x /opt/telemost/*.sh
 ### 3. Сервисный аккаунт Яндекс Облако
 
 1. Создать сервисный аккаунт
-2. Роли: `ai.speechkit.user` + `storage.uploader`
+2. Роль: `ai.speechkit.user`
 3. Создать API-ключ
-4. Создать статический ключ для Object Storage
 
 ### 4. Проектный файл секретов на сервере
 
@@ -69,21 +69,11 @@ chmod +x /opt/telemost/*.sh
 TELEMOST_TOKEN=...
 YC_FOLDER_ID=...
 YC_API_KEY=...
-YC_S3_BUCKET=...
-YC_S3_KEY_ID=...
-YC_S3_SECRET=...
-S3_ENDPOINT=https://storage.yandexcloud.net
-S3_PUBLIC_BASE_URL=https://storage.yandexcloud.net
-S3_REGION=ru-central1
-S3_FORCE_PATH_STYLE=false
-```
-
-Для MinIO задайте, например:
-
-```
-S3_ENDPOINT=https://s3.begemot26.ru
-S3_PUBLIC_BASE_URL=https://s3.begemot26.ru
-S3_FORCE_PATH_STYLE=true
+MINIO_ENDPOINT=https://s3.begemot26.ru
+MINIO_ACCESS_KEY=...
+MINIO_SECRET_KEY=...
+MINIO_USE_SSL=true
+MINIO_BUCKET_MEDIA=telemost
 ```
 
 Ограничьте права доступа:

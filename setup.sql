@@ -36,18 +36,11 @@ CREATE INDEX idx_meeting_transcripts_created ON meeting_transcripts(created_at D
 --      TELEMOST_TOKEN=...
 --      YC_FOLDER_ID=...
 --      YC_API_KEY=...        (роль: ai.speechkit.user)
---      YC_S3_BUCKET=...      (напр. telemost-recordings)
---      YC_S3_KEY_ID=...
---      YC_S3_SECRET=...
---      S3_ENDPOINT=https://storage.yandexcloud.net
---      S3_PUBLIC_BASE_URL=https://storage.yandexcloud.net
---      S3_REGION=ru-central1
---      S3_FORCE_PATH_STYLE=false
---
---    Для MinIO:
---      S3_ENDPOINT=https://s3.begemot26.ru
---      S3_PUBLIC_BASE_URL=https://s3.begemot26.ru
---      S3_FORCE_PATH_STYLE=true
+--      MINIO_ENDPOINT=https://s3.begemot26.ru
+--      MINIO_ACCESS_KEY=...
+--      MINIO_SECRET_KEY=...
+--      MINIO_USE_SSL=true
+--      MINIO_BUCKET_MEDIA=telemost
 
 -- 3. ПОЛУЧЕНИЕ TELEMOST_TOKEN
 --    - Перейти: oauth.yandex.ru/client/new
@@ -68,5 +61,5 @@ CREATE INDEX idx_meeting_transcripts_created ON meeting_transcripts(created_at D
 --    bash /opt/telemost/stop_meeting.sh
 
 -- 6. ПРОВЕРКА ТРАНСКРИБАЦИИ
---    export YC_FOLDER_ID=... YC_API_KEY=... YC_S3_BUCKET=... ...
+--    export YC_FOLDER_ID=... YC_API_KEY=... MINIO_ENDPOINT=... MINIO_ACCESS_KEY=...
 --    python3 /opt/telemost/transcribe.py /opt/recordings/telemost/meeting_XXX.ogg "Тест"

@@ -10,13 +10,11 @@ Env:
   YC_FOLDER_ID      — ID папки в Яндекс Облаке
   YC_API_KEY        — API-ключ сервисного аккаунта (предпочтительно)
   YC_IAM_TOKEN      — или IAM-токен (истекает через 12 часов)
-  YC_S3_BUCKET      — имя бакета в Object Storage
-  YC_S3_KEY_ID      — ключ доступа S3
-  YC_S3_SECRET      — секрет S3
-  S3_ENDPOINT       — (опционально) S3 endpoint, например https://s3.begemot26.ru
-  S3_PUBLIC_BASE_URL— (опционально) публичный base URL для SpeechKit
-  S3_REGION         — (опционально) регион S3 (по умолчанию ru-central1)
-  S3_FORCE_PATH_STYLE — (опционально) true/false, для MinIO обычно true
+  MINIO_ENDPOINT    — endpoint MinIO, например https://s3.begemot26.ru
+  MINIO_ACCESS_KEY  — ключ доступа MinIO
+  MINIO_SECRET_KEY  — секрет MinIO
+  MINIO_USE_SSL     — true/false (если endpoint без схемы)
+  MINIO_BUCKET_MEDIA — имя бакета MinIO для аудиофайлов
 """
 
 import sys
@@ -31,19 +29,26 @@ from datetime import datetime
 
 # ── Конфигурация ──────────────────────────────────────────────────────────────
 
-FOLDER_ID  = os.environ["YC_FOLDER_ID"]
-S3_BUCKET  = os.environ["YC_S3_BUCKET"]
-S3_KEY_ID  = os.environ["YC_S3_KEY_ID"]
-S3_SECRET  = os.environ["YC_S3_SECRET"]
-S3_ENDPOINT = os.environ.get("S3_ENDPOINT", "https://storage.yandexcloud.net").strip()
-S3_PUBLIC_BASE_URL = os.environ.get("S3_PUBLIC_BASE_URL", S3_ENDPOINT).strip().rstrip("/")
-S3_REGION = os.environ.get("S3_REGION", "ru-central1").strip()
-S3_FORCE_PATH_STYLE = os.environ.get("S3_FORCE_PATH_STYLE", "").strip().lower() in {
+FOLDER_ID = os.environ["YC_FOLDER_ID"]
+MINIO_ENDPOINT = os.environ["MINIO_ENDPOINT"].strip()
+MINIO_ACCESS_KEY = os.environ["MINIO_ACCESS_KEY"]
+MINIO_SECRET_KEY = os.environ["MINIO_SECRET_KEY"]
+MINIO_BUCKET_MEDIA = os.environ["MINIO_BUCKET_MEDIA"]
+MINIO_USE_SSL = os.environ.get("MINIO_USE_SSL", "true").strip().lower() in {
     "1",
     "true",
     "yes",
     "on",
 }
+
+
+def build_minio_base_url() -> str:
+    """Нормализовать endpoint MinIO и вернуть base URL с протоколом."""
+    if MINIO_ENDPOINT.startswith("http://") or MINIO_ENDPOINT.startswith("https://"):
+        return MINIO_ENDPOINT.rstrip("/")
+
+    scheme = "https" if MINIO_USE_SSL else "http"
+    return f"{scheme}://{MINIO_ENDPOINT.rstrip('/')}"
 
 # Поддерживаем оба варианта авторизации
 if os.environ.get("YC_API_KEY"):
@@ -62,25 +67,28 @@ OPERATIONS_URL = "https://operation.api.cloud.yandex.net/operations"
 # ── S3 upload ─────────────────────────────────────────────────────────────────
 
 def upload_to_s3(file_path: str) -> str:
-    """Загрузить файл в S3-совместимое хранилище, вернуть публичный URL."""
+    """Загрузить файл в MinIO, вернуть публичный URL."""
+    minio_base_url = build_minio_base_url()
     s3 = boto3.client(
         "s3",
-        endpoint_url=S3_ENDPOINT,
-        aws_access_key_id=S3_KEY_ID,
-        aws_secret_access_key=S3_SECRET,
-        region_name=S3_REGION,
-        config=Config(s3={"addressing_style": "path" if S3_FORCE_PATH_STYLE else "auto"}),
+        endpoint_url=minio_base_url,
+        aws_access_key_id=MINIO_ACCESS_KEY,
+        aws_secret_access_key=MINIO_SECRET_KEY,
+        region_name="us-east-1",
+        config=Config(s3={"addressing_style": "path"}),
     )
     object_name = f"telemost-recordings/{Path(file_path).name}"
     
-    print(f"Загрузка {file_path} → s3://{S3_BUCKET}/{object_name}", file=sys.stderr)
+    print(
+        f"Загрузка {file_path} → minio://{MINIO_BUCKET_MEDIA}/{object_name}",
+        file=sys.stderr,
+    )
     s3.upload_file(
         file_path,
-        S3_BUCKET,
+        MINIO_BUCKET_MEDIA,
         object_name,
-        ExtraArgs={"StorageClass": "STANDARD"},
     )
-    return f"{S3_PUBLIC_BASE_URL}/{S3_BUCKET}/{object_name}"
+    return f"{minio_base_url}/{MINIO_BUCKET_MEDIA}/{object_name}"
 
 
 # ── SpeechKit ─────────────────────────────────────────────────────────────────
