@@ -117,7 +117,9 @@ def start_recognition(audio_url: str) -> str:
         headers={"Authorization": AUTH_HEADER},
         timeout=30,
     )
-    resp.raise_for_status()
+    if not resp.ok:
+        print(f"SpeechKit HTTP {resp.status_code}: {resp.text}", file=sys.stderr)
+        resp.raise_for_status()
     data = resp.json()
 
     op_id = data.get("id")
