@@ -1,19 +1,23 @@
 #!/usr/bin/env python3
 """
-transcribe.py — загрузить .ogg в S3, транскрибировать через Yandex SpeechKit,
+transcribe.py — загрузить .ogg в MinIO (долгосрочно) и YC Object Storage
+(временно для SpeechKit), транскрибировать через Yandex SpeechKit,
 вернуть JSON с текстом и метаданными.
 
 Использование:
   python3 transcribe.py /path/to/meeting.ogg "Название встречи"
 
 Env:
-  YC_FOLDER_ID      — ID папки в Яндекс Облаке
-  YC_API_KEY        — API-ключ сервисного аккаунта (предпочтительно)
-  YC_IAM_TOKEN      — или IAM-токен (истекает через 12 часов)
-  MINIO_ENDPOINT    — endpoint MinIO, например https://s3.begemot26.ru
-  MINIO_ACCESS_KEY  — ключ доступа MinIO
-  MINIO_SECRET_KEY  — секрет MinIO
-  MINIO_USE_SSL     — true/false (если endpoint без схемы)
+  YC_FOLDER_ID       — ID папки в Яндекс Облаке
+  YC_API_KEY         — API-ключ сервисного аккаунта (предпочтительно)
+  YC_IAM_TOKEN       — или IAM-токен (истекает через 12 часов)
+  YC_S3_BUCKET       — бакет в Yandex Object Storage (временный, для SpeechKit)
+  YC_S3_KEY_ID       — статический ключ доступа YC Object Storage
+  YC_S3_SECRET       — секрет YC Object Storage
+  MINIO_ENDPOINT     — endpoint MinIO, например https://s3.begemot26.ru
+  MINIO_ACCESS_KEY   — ключ доступа MinIO
+  MINIO_SECRET_KEY   — секрет MinIO
+  MINIO_USE_SSL      — true/false (если endpoint без схемы)
   MINIO_BUCKET_MEDIA — имя бакета MinIO для аудиофайлов
 """
 
@@ -30,27 +34,19 @@ from datetime import datetime
 # ── Конфигурация ──────────────────────────────────────────────────────────────
 
 FOLDER_ID = os.environ["YC_FOLDER_ID"]
+
 MINIO_ENDPOINT = os.environ["MINIO_ENDPOINT"].strip()
 MINIO_ACCESS_KEY = os.environ["MINIO_ACCESS_KEY"]
 MINIO_SECRET_KEY = os.environ["MINIO_SECRET_KEY"]
 MINIO_BUCKET_MEDIA = os.environ["MINIO_BUCKET_MEDIA"]
 MINIO_USE_SSL = os.environ.get("MINIO_USE_SSL", "true").strip().lower() in {
-    "1",
-    "true",
-    "yes",
-    "on",
+    "1", "true", "yes", "on",
 }
 
+YC_S3_BUCKET = os.environ["YC_S3_BUCKET"]
+YC_S3_KEY_ID = os.environ["YC_S3_KEY_ID"]
+YC_S3_SECRET = os.environ["YC_S3_SECRET"]
 
-def build_minio_base_url() -> str:
-    """Нормализовать endpoint MinIO и вернуть base URL с протоколом."""
-    if MINIO_ENDPOINT.startswith("http://") or MINIO_ENDPOINT.startswith("https://"):
-        return MINIO_ENDPOINT.rstrip("/")
-
-    scheme = "https" if MINIO_USE_SSL else "http"
-    return f"{scheme}://{MINIO_ENDPOINT.rstrip('/')}"
-
-# Поддерживаем оба варианта авторизации
 if os.environ.get("YC_API_KEY"):
     AUTH_HEADER = f"Api-Key {os.environ['YC_API_KEY']}"
 elif os.environ.get("YC_IAM_TOKEN"):
@@ -64,12 +60,19 @@ SPEECHKIT_START_URL = (
 OPERATIONS_URL = "https://operation.api.cloud.yandex.net/operations"
 
 
-# ── S3 upload ─────────────────────────────────────────────────────────────────
+# ── MinIO (долгосрочное хранение) ─────────────────────────────────────────────
 
-def upload_to_s3(file_path: str) -> str:
-    """Загрузить файл в MinIO, вернуть публичный URL."""
+def build_minio_base_url() -> str:
+    if MINIO_ENDPOINT.startswith("http://") or MINIO_ENDPOINT.startswith("https://"):
+        return MINIO_ENDPOINT.rstrip("/")
+    scheme = "https" if MINIO_USE_SSL else "http"
+    return f"{scheme}://{MINIO_ENDPOINT.rstrip('/')}"
+
+
+def upload_to_minio(file_path: str) -> str:
+    """Загрузить файл в MinIO для долгосрочного хранения."""
     minio_base_url = build_minio_base_url()
-    s3 = boto3.client(
+    client = boto3.client(
         "s3",
         endpoint_url=minio_base_url,
         aws_access_key_id=MINIO_ACCESS_KEY,
@@ -78,17 +81,52 @@ def upload_to_s3(file_path: str) -> str:
         config=Config(s3={"addressing_style": "path"}),
     )
     object_name = f"telemost-recordings/{Path(file_path).name}"
-    
+
     print(
-        f"Загрузка {file_path} → minio://{MINIO_BUCKET_MEDIA}/{object_name}",
+        f"[MinIO] Загрузка {file_path} → {MINIO_BUCKET_MEDIA}/{object_name}",
         file=sys.stderr,
     )
-    s3.upload_file(
-        file_path,
-        MINIO_BUCKET_MEDIA,
-        object_name,
-    )
+    client.upload_file(file_path, MINIO_BUCKET_MEDIA, object_name)
     return f"{minio_base_url}/{MINIO_BUCKET_MEDIA}/{object_name}"
+
+
+# ── YC Object Storage (временное хранение для SpeechKit) ──────────────────────
+
+def _yc_s3_client():
+    return boto3.client(
+        "s3",
+        endpoint_url="https://storage.yandexcloud.net",
+        aws_access_key_id=YC_S3_KEY_ID,
+        aws_secret_access_key=YC_S3_SECRET,
+        region_name="ru-central1",
+    )
+
+
+def upload_to_yc(file_path: str) -> tuple[str, str]:
+    """Загрузить файл в YC Object Storage, вернуть (public_url, object_name)."""
+    client = _yc_s3_client()
+    object_name = f"telemost-tmp/{Path(file_path).name}"
+
+    print(
+        f"[YC S3] Загрузка {file_path} → {YC_S3_BUCKET}/{object_name}",
+        file=sys.stderr,
+    )
+    client.upload_file(file_path, YC_S3_BUCKET, object_name)
+    public_url = f"https://storage.yandexcloud.net/{YC_S3_BUCKET}/{object_name}"
+    return public_url, object_name
+
+
+def delete_from_yc(object_name: str) -> None:
+    """Удалить временный файл из YC Object Storage."""
+    try:
+        client = _yc_s3_client()
+        client.delete_object(Bucket=YC_S3_BUCKET, Key=object_name)
+        print(f"[YC S3] Удалён {YC_S3_BUCKET}/{object_name}", file=sys.stderr)
+    except Exception as exc:
+        print(
+            f"[YC S3] Не удалось удалить {object_name}: {exc}",
+            file=sys.stderr,
+        )
 
 
 # ── SpeechKit ─────────────────────────────────────────────────────────────────
@@ -102,8 +140,8 @@ def start_recognition(audio_url: str) -> str:
                 "model": "general",
                 "audioEncoding": "OGG_OPUS",
                 "audioChannelCount": 1,
-                "enableSpeakerLabeling": True,   # диаризация спикеров
-                "rawResults": False,              # с пунктуацией
+                "enableSpeakerLabeling": True,
+                "rawResults": False,
                 "profanityFilter": False,
             },
             "folderId": FOLDER_ID,
@@ -125,7 +163,7 @@ def start_recognition(audio_url: str) -> str:
     op_id = data.get("id")
     if not op_id:
         raise RuntimeError(f"Не получен operation ID: {data}")
-    
+
     print(f"Operation ID: {op_id}", file=sys.stderr)
     return op_id
 
@@ -137,18 +175,18 @@ def poll_results(operation_id: str, max_wait_sec: int = 7200) -> dict:
     """
     url = f"{OPERATIONS_URL}/{operation_id}"
     headers = {"Authorization": AUTH_HEADER}
-    
+
     start = time.time()
     attempt = 0
-    
+
     while time.time() - start < max_wait_sec:
         attempt += 1
         try:
             resp = requests.get(url, headers=headers, timeout=15)
             resp.raise_for_status()
             data = resp.json()
-        except requests.RequestException as e:
-            print(f"Attempt {attempt}: ошибка запроса: {e}", file=sys.stderr)
+        except requests.RequestException as exc:
+            print(f"Attempt {attempt}: ошибка запроса: {exc}", file=sys.stderr)
             time.sleep(15)
             continue
 
@@ -189,7 +227,6 @@ def format_transcript(response: dict) -> tuple[str, list[dict]]:
         words = best.get("words", [])
         speaker = words[0].get("speakerTag", "?") if words else "?"
 
-        # Временны́е метки из слов
         start_ms = None
         end_ms = None
         if words:
@@ -206,7 +243,6 @@ def format_transcript(response: dict) -> tuple[str, list[dict]]:
             "end_ms": end_ms,
         })
 
-        # Форматированный текст: новый заголовок при смене спикера
         if speaker != prev_speaker:
             lines.append(f"\n[Спикер {speaker}]")
             prev_speaker = speaker
@@ -229,12 +265,15 @@ def main():
         print(f"ERROR: файл не найден: {file_path}", file=sys.stderr)
         sys.exit(1)
 
-    # Пайплайн
-    audio_url = upload_to_s3(file_path)
-    op_id = start_recognition(audio_url)
+    upload_to_minio(file_path)
+
+    yc_audio_url, yc_object_name = upload_to_yc(file_path)
+    op_id = start_recognition(yc_audio_url)
 
     print("Ожидаем результатов SpeechKit...", file=sys.stderr)
     result = poll_results(op_id)
+
+    delete_from_yc(yc_object_name)
 
     transcript_text, utterances = format_transcript(result)
 
@@ -249,7 +288,6 @@ def main():
         "speaker_count": len({u["speaker"] for u in utterances}),
     }
 
-    # Stdout — для n8n (Parse JSON node)
     print(json.dumps(output, ensure_ascii=False, indent=2))
 
 
