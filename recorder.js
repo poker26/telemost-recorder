@@ -64,6 +64,8 @@ xvfb.start((err) => {
 
 console.error(`[recorder] Xvfb display: ${xvfb._display}`);
 
+process.env.DISPLAY = xvfb._display;
+
 const fileStream = createWriteStream(outputPath);
 
 const browser = await launch({
@@ -71,12 +73,15 @@ const browser = await launch({
   executablePath,
   defaultViewport: null,
   ignoreDefaultArgs: ["--mute-audio"],
+  env: {
+    ...process.env,
+    DISPLAY: xvfb._display,
+  },
   args: [
     "--no-sandbox",
     "--disable-setuid-sandbox",
     "--autoplay-policy=no-user-gesture-required",
     "--use-fake-ui-for-media-stream",
-    "--use-fake-device-for-media-stream",
     "--disable-gpu",
     "--allowlisted-extension-id=jjndjgheafjngoipoacpjgeicjeomjli",
     "--window-size=1280,720",
@@ -98,8 +103,8 @@ await new Promise((r) => setTimeout(r, 5000));
 
 const audioStream = await getStream(page, {
   audio: true,
-  video: false,
-  mimeType: "audio/webm;codecs=opus",
+  video: true,
+  mimeType: "video/webm",
 });
 
 audioStream.pipe(fileStream);
