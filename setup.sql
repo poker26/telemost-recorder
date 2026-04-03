@@ -26,14 +26,19 @@ CREATE INDEX idx_meeting_transcripts_created ON meeting_transcripts(created_at D
 --    cp transcribe.py /opt/telemost/
 --    chmod +x /opt/telemost/*.sh
 
--- 2. ПЕРЕМЕННЫЕ ОКРУЖЕНИЯ в n8n (Settings → Variables)
+-- 2. ПРОЕКТНЫЙ ФАЙЛ СЕКРЕТОВ НА СЕРВЕРЕ
 --
---    TELEMOST_TOKEN    — OAuth-токен приложения Телемост
---    YC_FOLDER_ID      — ID папки в Яндекс Облаке
---    YC_API_KEY        — API-ключ сервисного аккаунта (роль: ai.speechkit.user)
---    YC_S3_BUCKET      — имя бакета (напр. telemost-recordings)
---    YC_S3_KEY_ID      — ключ Object Storage
---    YC_S3_SECRET      — секрет Object Storage
+--    cp /opt/telemost-recorder/.env.telemost.example /opt/telemost-recorder/.env.telemost
+--    nano /opt/telemost-recorder/.env.telemost
+--    chmod 600 /opt/telemost-recorder/.env.telemost
+--
+--    В файле:
+--      TELEMOST_TOKEN=...
+--      YC_FOLDER_ID=...
+--      YC_API_KEY=...        (роль: ai.speechkit.user)
+--      YC_S3_BUCKET=...      (напр. telemost-recordings)
+--      YC_S3_KEY_ID=...
+--      YC_S3_SECRET=...
 
 -- 3. ПОЛУЧЕНИЕ TELEMOST_TOKEN
 --    - Перейти: oauth.yandex.ru/client/new

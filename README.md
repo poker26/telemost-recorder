@@ -61,15 +61,23 @@ chmod +x /opt/telemost/*.sh
 3. Создать API-ключ
 4. Создать статический ключ для Object Storage
 
-### 4. Переменные окружения в n8n (Settings → Variables)
+### 4. Проектный файл секретов на сервере
+
+Создайте файл `/opt/telemost-recorder/.env.telemost` по шаблону `.env.telemost.example`:
 
 ```
-TELEMOST_TOKEN    — OAuth-токен Телемост
-YC_FOLDER_ID      — ID папки в Яндекс Облаке
-YC_API_KEY        — API-ключ сервисного аккаунта
-YC_S3_BUCKET      — имя бакета Object Storage
-YC_S3_KEY_ID      — ключ доступа S3
-YC_S3_SECRET      — секрет S3
+TELEMOST_TOKEN=...
+YC_FOLDER_ID=...
+YC_API_KEY=...
+YC_S3_BUCKET=...
+YC_S3_KEY_ID=...
+YC_S3_SECRET=...
+```
+
+Ограничьте права доступа:
+
+```bash
+chmod 600 /opt/telemost-recorder/.env.telemost
 ```
 
 ### 5. Supabase
@@ -79,7 +87,7 @@ YC_S3_SECRET      — секрет S3
 ### 6. n8n workflow
 
 Импортировать `n8n_workflow.json` через **Settings → Import Workflow**.
-Настроить credentials: Telegram Bot + Postgres (Supabase).
+Настроить credentials: Telegram Bot + Postgres (Supabase) + SSH.
 
 ## Использование
 
@@ -89,6 +97,10 @@ YC_S3_SECRET      — секрет S3
 ```
 
 После `/meeting_stop` транскрипт с разметкой спикеров придёт в Telegram и сохранится в Supabase.
+
+### 7. SSH ноды в workflow
+
+В workflow используются SSH-ноды (`Start Meeting`, `Stop Meeting`, `Run Transcription`), которые выполняют команды на сервере и загружают секреты из `/opt/telemost-recorder/.env.telemost`.
 
 ## Формат транскрипта
 
