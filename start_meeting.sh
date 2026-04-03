@@ -34,7 +34,7 @@ mkdir -p "$RECORDINGS_DIR"
 # Создать конференцию через API
 echo "Создаём конференцию: $TITLE" >&2
 RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
-  "https://api.telemost.yandex.net/v1/conferences" \
+  "https://cloud-api.yandex.net/v1/telemost-api/conferences" \
   -H "Authorization: OAuth $TELEMOST_TOKEN" \
   -H "Content-Type: application/json" \
   -d "{
