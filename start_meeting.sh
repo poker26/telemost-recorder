@@ -38,7 +38,7 @@ RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
   -H "Authorization: OAuth $TELEMOST_TOKEN" \
   -H "Content-Type: application/json" \
   -d "{
-    \"waiting_room_level\": \"ADMIN\",
+    \"waiting_room_level\": \"ADMINS\",
     \"live_stream\": {
       \"access_level\": \"PUBLIC\",
       \"title\": \"$TITLE\"
