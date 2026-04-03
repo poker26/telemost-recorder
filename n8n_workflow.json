@@ -37,7 +37,7 @@
 
     {
       "parameters": {
-        "command": "={{ 'set -a\n. /opt/telemost-recorder/.env.telemost\nset +a\nRECORDINGS_DIR=/opt/recordings/telemost /opt/telemost-recorder/start_meeting.sh \"' + (($json.message.text.replace('/meeting_start', '').trim() || 'Встреча ' + new Date().toLocaleString('ru-RU')).replace(/\"/g, '\\\\\"')) + '\"' }}"
+        "command": "={{ '/opt/telemost-recorder/run_start.sh \"' + (($json.message.text.replace('/meeting_start', '').trim() || 'Встреча ' + new Date().toLocaleString('ru-RU')).replace(/\"/g, '\\\\\"')) + '\"' }}"
       },
       "name": "Start Meeting",
       "type": "n8n-nodes-base.ssh",
@@ -98,7 +98,7 @@
 
     {
       "parameters": {
-        "command": "/opt/telemost-recorder/stop_meeting.sh"
+        "command": "/opt/telemost-recorder/run_stop.sh"
       },
       "name": "Stop Meeting",
       "type": "n8n-nodes-base.ssh",
@@ -158,7 +158,7 @@
     },
     {
       "parameters": {
-        "command": "={{ 'set -a\n. /opt/telemost-recorder/.env.telemost\nset +a\n/opt/telemost-recorder/.venv/bin/python /opt/telemost-recorder/transcribe.py \"' + ($('Parse Stop State').first().json.file || '').replace(/\"/g, '\\\\\"') + '\" \"' + ($('Parse Stop State').first().json.title || '').replace(/\"/g, '\\\\\"') + '\"' }}"
+        "command": "={{ '/opt/telemost-recorder/run_transcribe.sh \"' + ($('Parse Stop State').first().json.file || '').replace(/\"/g, '\\\\\"') + '\" \"' + ($('Parse Stop State').first().json.title || '').replace(/\"/g, '\\\\\"') + '\"' }}"
       },
       "name": "Run Transcription",
       "type": "n8n-nodes-base.ssh",
