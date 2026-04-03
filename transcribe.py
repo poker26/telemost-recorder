@@ -13,6 +13,10 @@ Env:
   YC_S3_BUCKET      — имя бакета в Object Storage
   YC_S3_KEY_ID      — ключ доступа S3
   YC_S3_SECRET      — секрет S3
+  S3_ENDPOINT       — (опционально) S3 endpoint, например https://s3.begemot26.ru
+  S3_PUBLIC_BASE_URL— (опционально) публичный base URL для SpeechKit
+  S3_REGION         — (опционально) регион S3 (по умолчанию ru-central1)
+  S3_FORCE_PATH_STYLE — (опционально) true/false, для MinIO обычно true
 """
 
 import sys
@@ -21,6 +25,7 @@ import json
 import time
 import boto3
 import requests
+from botocore.config import Config
 from pathlib import Path
 from datetime import datetime
 
@@ -30,6 +35,15 @@ FOLDER_ID  = os.environ["YC_FOLDER_ID"]
 S3_BUCKET  = os.environ["YC_S3_BUCKET"]
 S3_KEY_ID  = os.environ["YC_S3_KEY_ID"]
 S3_SECRET  = os.environ["YC_S3_SECRET"]
+S3_ENDPOINT = os.environ.get("S3_ENDPOINT", "https://storage.yandexcloud.net").strip()
+S3_PUBLIC_BASE_URL = os.environ.get("S3_PUBLIC_BASE_URL", S3_ENDPOINT).strip().rstrip("/")
+S3_REGION = os.environ.get("S3_REGION", "ru-central1").strip()
+S3_FORCE_PATH_STYLE = os.environ.get("S3_FORCE_PATH_STYLE", "").strip().lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
 
 # Поддерживаем оба варианта авторизации
 if os.environ.get("YC_API_KEY"):
@@ -48,13 +62,14 @@ OPERATIONS_URL = "https://operation.api.cloud.yandex.net/operations"
 # ── S3 upload ─────────────────────────────────────────────────────────────────
 
 def upload_to_s3(file_path: str) -> str:
-    """Загрузить файл в Yandex Object Storage, вернуть публичный URL."""
+    """Загрузить файл в S3-совместимое хранилище, вернуть публичный URL."""
     s3 = boto3.client(
         "s3",
-        endpoint_url="https://storage.yandexcloud.net",
+        endpoint_url=S3_ENDPOINT,
         aws_access_key_id=S3_KEY_ID,
         aws_secret_access_key=S3_SECRET,
-        region_name="ru-central1",
+        region_name=S3_REGION,
+        config=Config(s3={"addressing_style": "path" if S3_FORCE_PATH_STYLE else "auto"}),
     )
     object_name = f"telemost-recordings/{Path(file_path).name}"
     
@@ -65,7 +80,7 @@ def upload_to_s3(file_path: str) -> str:
         object_name,
         ExtraArgs={"StorageClass": "STANDARD"},
     )
-    return f"https://storage.yandexcloud.net/{S3_BUCKET}/{object_name}"
+    return f"{S3_PUBLIC_BASE_URL}/{S3_BUCKET}/{object_name}"
 
 
 # ── SpeechKit ─────────────────────────────────────────────────────────────────

@@ -39,6 +39,15 @@ CREATE INDEX idx_meeting_transcripts_created ON meeting_transcripts(created_at D
 --      YC_S3_BUCKET=...      (напр. telemost-recordings)
 --      YC_S3_KEY_ID=...
 --      YC_S3_SECRET=...
+--      S3_ENDPOINT=https://storage.yandexcloud.net
+--      S3_PUBLIC_BASE_URL=https://storage.yandexcloud.net
+--      S3_REGION=ru-central1
+--      S3_FORCE_PATH_STYLE=false
+--
+--    Для MinIO:
+--      S3_ENDPOINT=https://s3.begemot26.ru
+--      S3_PUBLIC_BASE_URL=https://s3.begemot26.ru
+--      S3_FORCE_PATH_STYLE=true
 
 -- 3. ПОЛУЧЕНИЕ TELEMOST_TOKEN
 --    - Перейти: oauth.yandex.ru/client/new

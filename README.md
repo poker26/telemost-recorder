@@ -72,6 +72,18 @@ YC_API_KEY=...
 YC_S3_BUCKET=...
 YC_S3_KEY_ID=...
 YC_S3_SECRET=...
+S3_ENDPOINT=https://storage.yandexcloud.net
+S3_PUBLIC_BASE_URL=https://storage.yandexcloud.net
+S3_REGION=ru-central1
+S3_FORCE_PATH_STYLE=false
+```
+
+Для MinIO задайте, например:
+
+```
+S3_ENDPOINT=https://s3.begemot26.ru
+S3_PUBLIC_BASE_URL=https://s3.begemot26.ru
+S3_FORCE_PATH_STYLE=true
 ```
 
 Ограничьте права доступа:
