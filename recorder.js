@@ -28,8 +28,32 @@ console.error(`[recorder] output:   ${outputPath}`);
 
 const fileStream = createWriteStream(outputPath);
 
+import { homedir } from "os";
+import { existsSync } from "fs";
+import { join } from "path";
+import { readdirSync } from "fs";
+
+function findPuppeteerChrome() {
+  const cacheDir = join(homedir(), ".cache", "puppeteer", "chrome");
+  if (!existsSync(cacheDir)) return undefined;
+  const versions = readdirSync(cacheDir).sort().reverse();
+  for (const version of versions) {
+    const candidate = join(cacheDir, version, "chrome-linux64", "chrome");
+    if (existsSync(candidate)) return candidate;
+  }
+  return undefined;
+}
+
+const executablePath = findPuppeteerChrome();
+if (!executablePath) {
+  console.error("[recorder] Chrome не найден. Запустите: npx puppeteer browsers install chrome");
+  process.exit(1);
+}
+console.error(`[recorder] Chrome: ${executablePath}`);
+
 const browser = await launch({
   headless: "new",
+  executablePath,
   ignoreDefaultArgs: ["--mute-audio"],
   args: [
     "--no-sandbox",
