@@ -25,6 +25,7 @@ import sys
 import os
 import json
 import time
+import subprocess
 import boto3
 import requests
 from botocore.config import Config
@@ -255,7 +256,7 @@ def format_transcript(response: dict) -> tuple[str, list[dict]]:
 
 def main():
     if len(sys.argv) < 2:
-        print("Использование: transcribe.py <file.ogg> [title]", file=sys.stderr)
+        print("Использование: transcribe.py <file.webm|file.ogg> [title]", file=sys.stderr)
         sys.exit(1)
 
     file_path = sys.argv[1]
@@ -265,9 +266,24 @@ def main():
         print(f"ERROR: файл не найден: {file_path}", file=sys.stderr)
         sys.exit(1)
 
+    audio_for_speechkit = file_path
+    if file_path.endswith(".webm"):
+        audio_for_speechkit = file_path.rsplit(".", 1)[0] + ".ogg"
+        print(f"Конвертация {file_path} → {audio_for_speechkit}", file=sys.stderr)
+        subprocess.run(
+            [
+                "ffmpeg", "-i", file_path,
+                "-vn", "-ac", "1", "-ar", "16000",
+                "-c:a", "libopus", "-b:a", "32k",
+                audio_for_speechkit, "-y",
+            ],
+            check=True,
+            capture_output=True,
+        )
+
     upload_to_minio(file_path)
 
-    yc_audio_url, yc_object_name = upload_to_yc(file_path)
+    yc_audio_url, yc_object_name = upload_to_yc(audio_for_speechkit)
     op_id = start_recognition(yc_audio_url)
 
     print("Ожидаем результатов SpeechKit...", file=sys.stderr)

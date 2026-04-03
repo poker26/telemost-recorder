@@ -1,0 +1,10 @@
+{
+  "name": "telemost-recorder",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "puppeteer-stream": "^3.0.9",
+    "puppeteer": "^24.0.0"
+  }
+}

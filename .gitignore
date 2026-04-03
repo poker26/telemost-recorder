@@ -1,8 +1,2 @@
-*.ogg
-*.webm
-*.mp4
-*.log
-/recordings/
-__pycache__/
-*.pyc
-.env
+node_modules/
+.env.telemost
