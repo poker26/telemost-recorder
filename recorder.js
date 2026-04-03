@@ -202,6 +202,28 @@ if (nameInput) {
   console.error(`[recorder] Имя бота: ${BOT_NAME}`);
 }
 
+async function clickMuteButtons() {
+  await page.evaluate(() => {
+    const allButtons = [...document.querySelectorAll("button, [role='button'], [class*='button']")];
+    for (const btn of allButtons) {
+      const label = (btn.getAttribute("aria-label") || btn.textContent || "").toLowerCase();
+      const title = (btn.getAttribute("title") || "").toLowerCase();
+      const combined = label + " " + title;
+      if (/микрофон|microphone|mute.*audio/i.test(combined)) {
+        const isOn = !(/выкл|off|muted/i.test(combined));
+        if (isOn) btn.click();
+      }
+      if (/камер|camera|video/i.test(combined)) {
+        const isOn = !(/выкл|off|muted/i.test(combined));
+        if (isOn) btn.click();
+      }
+    }
+  });
+}
+
+await clickMuteButtons();
+console.error("[recorder] Попытка отключить камеру/микрофон на лобби");
+
 const joinButton = await page.evaluateHandle(() => {
   const buttons = [...document.querySelectorAll("button, [role='button']")];
   return buttons.find((b) => /подключиться|присоединиться|join/i.test(b.textContent));
@@ -216,6 +238,9 @@ if (joinButton && joinButton.asElement()) {
 
 console.error("[recorder] Ожидаем подключение и WebRTC-треки (15 сек)...");
 await new Promise((r) => setTimeout(r, 15000));
+
+await clickMuteButtons();
+console.error("[recorder] Повторная попытка отключить камеру/микрофон в конференции");
 
 console.error("[recorder] Запись активна. Ожидаем SIGTERM для остановки...");
 
