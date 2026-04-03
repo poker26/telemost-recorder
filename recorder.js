@@ -1,21 +1,20 @@
 #!/usr/bin/env node
 /**
- * recorder.js — Puppeteer-бот, который подключается к конференции Телемост
- * и записывает аудио через puppeteer-stream.
+ * recorder.js — Puppeteer-бот для записи аудио из конференции Телемост.
+ *
+ * Подход: перехват WebRTC-аудиопотоков через monkey-patch RTCPeerConnection,
+ * запись через MediaRecorder в браузере, передача чанков в Node.js.
+ * Не требует системных аудиоустройств и tabCapture.
  *
  * Использование:
  *   node recorder.js <join_url> <output_file>
  *
  * Остановка:
  *   Отправить SIGTERM — бот корректно завершит запись.
- *
- * Требования:
- *   apt install xvfb pulseaudio
- *   npm install puppeteer-stream xvfb
  */
 
-import { launch, getStream } from "puppeteer-stream";
-import { createWriteStream, existsSync, readdirSync } from "fs";
+import puppeteer from "puppeteer";
+import { writeFileSync, appendFileSync, existsSync, readdirSync } from "fs";
 import { resolve, join } from "path";
 import { homedir } from "os";
 import { execSync } from "child_process";
@@ -53,27 +52,6 @@ if (!executablePath) {
 }
 console.error(`[recorder] Chrome: ${executablePath}`);
 
-// ── PulseAudio setup ─────────────────────────────────────────────────────────
-
-function setupPulseAudio() {
-  const commands = [
-    "pulseaudio --check || pulseaudio -D --exit-idle-time=-1 --system --disallow-exit 2>/dev/null || true",
-    'pactl load-module module-null-sink sink_name=DummyOutput sink_properties=device.description="Virtual_Dummy_Output" 2>/dev/null || true',
-    "pactl set-default-sink DummyOutput",
-    "pactl set-default-source DummyOutput.monitor",
-  ];
-  for (const cmd of commands) {
-    try {
-      execSync(cmd, { stdio: "pipe" });
-    } catch {
-      // PulseAudio module may already be loaded
-    }
-  }
-  console.error("[recorder] PulseAudio настроен");
-}
-
-setupPulseAudio();
-
 // ── Xvfb setup ───────────────────────────────────────────────────────────────
 
 const xvfb = new Xvfb({
@@ -90,11 +68,13 @@ xvfb.start((err) => {
 
 console.error(`[recorder] Xvfb display: ${xvfb._display}`);
 
+// ── Write empty file so stop_meeting.sh sees it ──────────────────────────────
+
+writeFileSync(outputPath, "");
+
 // ── Browser launch ───────────────────────────────────────────────────────────
 
-const fileStream = createWriteStream(outputPath);
-
-const browser = await launch({
+const browser = await puppeteer.launch({
   headless: false,
   executablePath,
   defaultViewport: null,
@@ -102,16 +82,14 @@ const browser = await launch({
   env: {
     ...process.env,
     DISPLAY: xvfb._display,
-    PULSE_SERVER: "/var/run/pulse/native",
   },
   args: [
     "--no-sandbox",
     "--disable-setuid-sandbox",
     "--autoplay-policy=no-user-gesture-required",
     "--use-fake-ui-for-media-stream",
-    "--enable-audio-service-sandbox=false",
+    "--use-fake-device-for-media-stream",
     "--disable-gpu",
-    "--allowlisted-extension-id=jjndjgheafjngoipoacpjgeicjeomjli",
     "--window-size=1280,720",
     `--display=${xvfb._display}`,
   ],
@@ -123,6 +101,92 @@ await page.setUserAgent(
   "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) " +
     "Chrome/131.0.0.0 Safari/537.36"
 );
+
+// Expose function to receive audio chunks from the browser
+await page.exposeFunction("__saveAudioChunk", (base64data) => {
+  const buffer = Buffer.from(base64data, "base64");
+  appendFileSync(outputPath, buffer);
+});
+
+// Inject WebRTC audio interceptor BEFORE page loads
+await page.evaluateOnNewDocument(() => {
+  const originalRTCPeerConnection = window.RTCPeerConnection;
+  const allRemoteTracks = [];
+  let recorderStarted = false;
+
+  window.RTCPeerConnection = function (...args) {
+    const peerConnection = new originalRTCPeerConnection(...args);
+
+    peerConnection.addEventListener("track", (event) => {
+      if (event.track.kind === "audio") {
+        console.log("[recorder-inject] Получен аудио-трек:", event.track.id);
+        allRemoteTracks.push(event.track);
+        tryStartRecorder();
+      }
+    });
+
+    return peerConnection;
+  };
+
+  window.RTCPeerConnection.prototype = originalRTCPeerConnection.prototype;
+  Object.keys(originalRTCPeerConnection).forEach((key) => {
+    window.RTCPeerConnection[key] = originalRTCPeerConnection[key];
+  });
+
+  function tryStartRecorder() {
+    if (recorderStarted || allRemoteTracks.length === 0) return;
+    recorderStarted = true;
+
+    console.log("[recorder-inject] Запуск MediaRecorder для", allRemoteTracks.length, "треков");
+
+    const audioContext = new AudioContext();
+    const destination = audioContext.createMediaStreamDestination();
+
+    for (const track of allRemoteTracks) {
+      const stream = new MediaStream([track]);
+      const source = audioContext.createMediaStreamSource(stream);
+      source.connect(destination);
+    }
+
+    const recorder = new MediaRecorder(destination.stream, {
+      mimeType: "audio/webm;codecs=opus",
+      audioBitsPerSecond: 32000,
+    });
+
+    recorder.ondataavailable = async (event) => {
+      if (event.data.size > 0) {
+        const arrayBuffer = await event.data.arrayBuffer();
+        const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+        window.__saveAudioChunk(base64);
+      }
+    };
+
+    recorder.start(2000);
+    console.log("[recorder-inject] MediaRecorder запущен (chunk каждые 2 сек)");
+
+    window.__stopRecorder = () => {
+      recorder.stop();
+      audioContext.close();
+      console.log("[recorder-inject] MediaRecorder остановлен");
+    };
+
+    // Re-attach new tracks that arrive later
+    const origAddTrack = allRemoteTracks.push.bind(allRemoteTracks);
+    window.__addRemoteTrack = (track) => {
+      origAddTrack(track);
+      const stream = new MediaStream([track]);
+      const source = audioContext.createMediaStreamSource(stream);
+      source.connect(destination);
+      console.log("[recorder-inject] Добавлен новый аудио-трек:", track.id);
+    };
+  }
+
+  // Watch for late-arriving tracks
+  const origAddEventListener = originalRTCPeerConnection.prototype.addEventListener;
+  // Already handled in constructor wrapper above
+});
+
+// ── Navigate and join conference ─────────────────────────────────────────────
 
 await page.goto(joinUrl, { waitUntil: "networkidle2", timeout: 30000 });
 console.error("[recorder] Страница загружена");
@@ -150,19 +214,12 @@ if (joinButton && joinButton.asElement()) {
   console.error("[recorder] WARN: Кнопка Подключиться не найдена");
 }
 
-console.error("[recorder] Ожидаем подключение к конференции (10 сек)...");
-await new Promise((r) => setTimeout(r, 10000));
+console.error("[recorder] Ожидаем подключение и WebRTC-треки (15 сек)...");
+await new Promise((r) => setTimeout(r, 15000));
 
-// ── Start recording ──────────────────────────────────────────────────────────
+console.error("[recorder] Запись активна. Ожидаем SIGTERM для остановки...");
 
-const stream = await getStream(page, {
-  audio: true,
-  video: true,
-  mimeType: "video/webm",
-});
-
-stream.pipe(fileStream);
-console.error("[recorder] Запись начата");
+// ── Graceful stop ────────────────────────────────────────────────────────────
 
 let stopping = false;
 
@@ -172,9 +229,14 @@ async function stopRecording() {
 
   console.error("[recorder] Останавливаем запись...");
 
-  try { stream.destroy(); } catch {}
-  await new Promise((r) => setTimeout(r, 1000));
-  try { fileStream.end(); } catch {}
+  try {
+    await page.evaluate(() => {
+      if (window.__stopRecorder) window.__stopRecorder();
+    });
+  } catch {}
+
+  await new Promise((r) => setTimeout(r, 2000));
+
   try { await browser.close(); } catch {}
   try { xvfb.stop(); } catch {}
 
