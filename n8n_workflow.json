@@ -46,12 +46,41 @@
     },
     {
       "parameters": {
-        "jsCode": "const raw = $input.first().json.stdout;\ntry {\n  const state = JSON.parse(raw);\n  return [{ json: state }];\n} catch(e) {\n  throw new Error('start_meeting.sh output: ' + raw);\n}"
+        "jsCode": "const raw = $input.first().json.stdout || '';\nconst err = $input.first().json.stderr || '';\nif (!raw.trim()) {\n  return [{ json: { error: err.trim() || 'start_meeting.sh вернул пустой ответ' } }];\n}\ntry {\n  return [{ json: JSON.parse(raw) }];\n} catch(e) {\n  return [{ json: { error: 'start_meeting.sh: ' + (err.trim() || raw.substring(0, 500)) } }];\n}"
       },
       "name": "Parse Start State",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [880, 160]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.error }}",
+              "operation": "isNotEmpty"
+            }
+          ]
+        }
+      },
+      "name": "Start Has Error?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1060, 160]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Telegram Trigger').first().json.message.chat.id }}",
+        "text": "=❌ Ошибка при создании встречи:\n\n`{{ $json.error }}`",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "name": "Send Start Error",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [1260, 80]
     },
     {
       "parameters": {
@@ -64,7 +93,7 @@
       "name": "Send Join URL",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1,
-      "position": [1100, 160]
+      "position": [1260, 240]
     },
 
     {
@@ -74,16 +103,45 @@
       "name": "Stop Meeting",
       "type": "n8n-nodes-base.ssh",
       "typeVersion": 1,
-      "position": [660, 400]
+      "position": [660, 440]
     },
     {
       "parameters": {
-        "jsCode": "const raw = $input.first().json.stdout;\ntry {\n  const state = JSON.parse(raw);\n  return [{ json: state }];\n} catch(e) {\n  if (raw.includes('error')) throw new Error(raw);\n  throw new Error('stop_meeting.sh output: ' + raw);\n}"
+        "jsCode": "const raw = $input.first().json.stdout || '';\nconst err = $input.first().json.stderr || '';\nif (!raw.trim()) {\n  return [{ json: { error: err.trim() || 'Нет активной встречи' } }];\n}\ntry {\n  return [{ json: JSON.parse(raw) }];\n} catch(e) {\n  return [{ json: { error: 'stop_meeting.sh: ' + (err.trim() || raw.substring(0, 500)) } }];\n}"
       },
       "name": "Parse Stop State",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [880, 400]
+      "position": [880, 440]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.error }}",
+              "operation": "isNotEmpty"
+            }
+          ]
+        }
+      },
+      "name": "Stop Has Error?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1060, 440]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Telegram Trigger').first().json.message.chat.id }}",
+        "text": "=❌ Ошибка при остановке встречи:\n\n`{{ $json.error }}`",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "name": "Send Stop Error",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [1260, 360]
     },
     {
       "parameters": {
@@ -96,7 +154,7 @@
       "name": "Notify Stop",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1,
-      "position": [1100, 400]
+      "position": [1260, 520]
     },
     {
       "parameters": {
@@ -105,16 +163,16 @@
       "name": "Run Transcription",
       "type": "n8n-nodes-base.ssh",
       "typeVersion": 1,
-      "position": [1320, 400]
+      "position": [1480, 520]
     },
     {
       "parameters": {
-        "jsCode": "const raw = $input.first().json.stdout;\ntry {\n  return [{ json: JSON.parse(raw) }];\n} catch(e) {\n  throw new Error('transcribe.py output: ' + raw.substring(0, 500));\n}"
+        "jsCode": "const raw = $input.first().json.stdout || '';\nconst err = $input.first().json.stderr || '';\nif (!raw.trim()) {\n  return [{ json: { error: 'transcribe.py: ' + (err.trim() || 'пустой ответ') } }];\n}\ntry {\n  return [{ json: JSON.parse(raw) }];\n} catch(e) {\n  return [{ json: { error: 'transcribe.py: ' + (err.trim() || raw.substring(0, 500)) } }];\n}"
       },
       "name": "Parse Transcript",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1540, 400]
+      "position": [1700, 520]
     },
     {
       "parameters": {
@@ -127,7 +185,7 @@
       "name": "Save to Supabase",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2,
-      "position": [1760, 320],
+      "position": [1920, 440],
       "credentials": {
         "postgres": {
           "name": "Supabase Postgres"
@@ -145,7 +203,7 @@
       "name": "Send Transcript",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1,
-      "position": [1760, 480]
+      "position": [1920, 600]
     },
 
     {
@@ -159,7 +217,7 @@
       "name": "Unknown Command",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1,
-      "position": [660, 560]
+      "position": [660, 600]
     }
   ],
   "connections": {
@@ -177,13 +235,25 @@
       "main": [[{ "node": "Parse Start State", "type": "main", "index": 0 }]]
     },
     "Parse Start State": {
-      "main": [[{ "node": "Send Join URL", "type": "main", "index": 0 }]]
+      "main": [[{ "node": "Start Has Error?", "type": "main", "index": 0 }]]
+    },
+    "Start Has Error?": {
+      "main": [
+        [{ "node": "Send Start Error", "type": "main", "index": 0 }],
+        [{ "node": "Send Join URL", "type": "main", "index": 0 }]
+      ]
     },
     "Stop Meeting": {
       "main": [[{ "node": "Parse Stop State", "type": "main", "index": 0 }]]
     },
     "Parse Stop State": {
-      "main": [[{ "node": "Notify Stop", "type": "main", "index": 0 }]]
+      "main": [[{ "node": "Stop Has Error?", "type": "main", "index": 0 }]]
+    },
+    "Stop Has Error?": {
+      "main": [
+        [{ "node": "Send Stop Error", "type": "main", "index": 0 }],
+        [{ "node": "Notify Stop", "type": "main", "index": 0 }]
+      ]
     },
     "Notify Stop": {
       "main": [[{ "node": "Run Transcription", "type": "main", "index": 0 }]]
