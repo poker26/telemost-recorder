@@ -12,10 +12,11 @@
  * Остановка:
  *   Отправить SIGTERM — бот корректно завершит запись (state оставляет stop_meeting.sh).
  *
- * Автоостановка при «Закончить встречу» в Телемосте:
- *   Периодически ищем в тексте страницы маркеры TELEMOST_END_TEXT_MARKERS (подстроки).
- *   При совпадении — корректная остановка, удаление /tmp/telemost_meeting.json и опционально
- *   POST на TELEMOST_FINISH_WEBHOOK_URL (JSON как у stop_meeting.sh) для продолжения цепочки в n8n.
+ * Автоостановка после завершения встречи организатором (без /meeting_stop):
+ *   Основной признак (см. probe_meeting_ui.js / лог): переход с /j/<id> на главную pathname «/»,
+ *   на экране появляется data-testid="create-call-button".
+ *   Дополнительно: TELEMOST_END_TEXT_MARKERS — подстроки в тексте страницы (по умолчанию выключено).
+ *   Финализация: удаление state, опционально POST TELEMOST_FINISH_WEBHOOK_URL.
  */
 
 import puppeteer from "puppeteer";
@@ -41,6 +42,19 @@ const outputFile = process.argv[3];
 if (!joinUrl || !outputFile) {
   console.error("Использование: node recorder.js <join_url> <output_file>");
   process.exit(1);
+}
+
+let joinMeetingPathname = "";
+try {
+  joinMeetingPathname = new URL(joinUrl).pathname;
+} catch {
+  console.error("[recorder] Некорректный join_url");
+  process.exit(1);
+}
+if (!joinMeetingPathname.startsWith("/j/")) {
+  console.error(
+    "[recorder] Ожидается ссылка вида https://telemost.yandex.ru/j/<id> для детекта окончания встречи",
+  );
 }
 
 const outputPath = resolve(outputFile);
@@ -384,22 +398,54 @@ autoStopTimer = setTimeout(() => {
 function startMeetingEndPolling() {
   const periodMs =
     Math.max(3, parseInt(process.env.TELEMOST_END_POLL_SEC || "8", 10)) * 1000;
-  const markers = (process.env.TELEMOST_END_TEXT_MARKERS ||
-    "встреча завершена,звонок завершён,созвон завершён,встреча окончена"
-  )
-    .split(",")
-    .map((segment) => segment.trim().toLowerCase())
-    .filter((segment) => segment.length > 0);
+  const markersRaw = process.env.TELEMOST_END_TEXT_MARKERS;
+  const textMarkers =
+    markersRaw === undefined || markersRaw.trim() === ""
+      ? []
+      : markersRaw
+          .split(",")
+          .map((segment) => segment.trim().toLowerCase())
+          .filter((segment) => segment.length > 0);
 
   endMeetingPollTimer = setInterval(async () => {
     if (stopping) return;
     try {
-      const ended = await page.evaluate((textMarkers) => {
-        const pageText = (document.body?.innerText || "").toLowerCase();
-        return textMarkers.some((marker) => pageText.includes(marker));
-      }, markers);
-      if (ended) {
-        console.error("[recorder] Обнаружено окончание встречи по тексту страницы (TELEMOST_END_TEXT_MARKERS)");
+      const endedByUi = await page.evaluate((joinPath) => {
+        try {
+          if (!joinPath || !joinPath.startsWith("/j/")) {
+            return false;
+          }
+          const host = window.location.hostname || "";
+          if (!host.includes("telemost.yandex.ru")) {
+            return false;
+          }
+          const path = window.location.pathname || "";
+          const onTelemostHome = path === "/" || path === "";
+          if (!onTelemostHome) {
+            return false;
+          }
+          const hasCreateCallButton =
+            document.querySelector('[data-testid="create-call-button"]') !== null;
+          return hasCreateCallButton;
+        } catch {
+          return false;
+        }
+      }, joinMeetingPathname);
+
+      let endedByText = false;
+      if (textMarkers.length > 0) {
+        endedByText = await page.evaluate((markers) => {
+          const pageText = (document.body?.innerText || "").toLowerCase();
+          return markers.some((marker) => pageText.includes(marker));
+        }, textMarkers);
+      }
+
+      if (endedByUi || endedByText) {
+        console.error(
+          endedByUi
+            ? "[recorder] Встреча завершена: переход на главную Телемоста (pathname /, create-call-button)"
+            : "[recorder] Встреча завершена: TELEMOST_END_TEXT_MARKERS",
+        );
         if (endMeetingPollTimer) {
           clearInterval(endMeetingPollTimer);
           endMeetingPollTimer = null;
