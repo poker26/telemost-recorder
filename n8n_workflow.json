@@ -37,7 +37,7 @@
 
     {
       "parameters": {
-        "command": "={{ '/opt/telemost-recorder/run_start.sh \"' + (($json.message.text.replace('/meeting_start', '').trim() || 'Встреча ' + new Date().toLocaleString('ru-RU')).replace(/\"/g, '\\\\\"')) + '\"' }}"
+        "command": "={{ '/opt/telemost-recorder/run_start.sh \"' + (($('Telegram Trigger').first().json.message.text.replace('/meeting_start', '').trim() || 'Встреча ' + new Date().toLocaleString('ru-RU')).replace(/\"/g, '\\\\\"')) + '\" \"' + String($('Telegram Trigger').first().json.message.chat.id) + '\"' }}"
       },
       "name": "Start Meeting",
       "type": "n8n-nodes-base.ssh",

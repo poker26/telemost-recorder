@@ -330,7 +330,12 @@ async function finalizeStateAndNotify(stopReason) {
     trigger: stopReason,
   };
 
-  const notifyChatId = process.env.TELEGRAM_NOTIFY_CHAT_ID;
+  const chatIdFromState =
+    state.telegram_chat_id != null && String(state.telegram_chat_id).trim() !== ""
+      ? String(state.telegram_chat_id).trim()
+      : "";
+  const chatIdFromEnv = (process.env.TELEGRAM_NOTIFY_CHAT_ID || "").trim();
+  const notifyChatId = chatIdFromState || chatIdFromEnv;
   if (notifyChatId) {
     payload.chat_id = notifyChatId;
   }
@@ -350,6 +355,12 @@ async function finalizeStateAndNotify(stopReason) {
       );
     }
     return;
+  }
+
+  if (!notifyChatId) {
+    console.error(
+      "[recorder] ВНИМАНИЕ: webhook без chat_id — в Telegram не отправить. Задайте TELEGRAM_NOTIFY_CHAT_ID в .env.telemost или передавайте chat id вторым аргументом run_start.sh (обновите узел SSH «Start Meeting» в n8n).",
+    );
   }
 
   try {

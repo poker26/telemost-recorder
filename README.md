@@ -112,11 +112,10 @@ chmod 600 /opt/telemost-recorder/.env.telemost
 1. Импортировать второй workflow: `n8n_webhook_meeting_finish.json` (или собрать аналог: узел **Webhook** → те же шаги, что после «Notify Stop» в основном workflow).
 2. В узле **Webhook** включить режим ответа **«Immediately» / `onReceived`** (чтобы `recorder` не ждал окончания транскрибации по HTTP).
 3. **Активировать** workflow и скопировать **Production Webhook URL** (например `https://ваш-домен/webhook/.../telemost-recording-finished`).
-4. В `/opt/telemost-recorder/.env.telemost` задать:
-   - `TELEMOST_FINISH_WEBHOOK_URL` — этот URL (обязательно для вызова n8n);
-   - `TELEGRAM_NOTIFY_CHAT_ID` — числовой id чата Telegram (чтобы узлы «Send Transcript» в webhook-workflow знали, куда писать; без этого транскрипт в БД может сохраниться, но сообщение в Telegram не уйдёт).
+4. В `/opt/telemost-recorder/.env.telemost` задать `TELEMOST_FINISH_WEBHOOK_URL` (обязательно для вызова n8n).
+5. **Куда слать транскрипт в Telegram:** при старте через бота узел **Start Meeting** передаёт `chat.id` на сервер; он сохраняется в `/tmp/telemost_meeting.json` как `telegram_chat_id` и попадает в webhook как `chat_id`. Если встречу запускали не через обновлённый workflow, задайте запасной вариант: `TELEGRAM_NOTIFY_CHAT_ID` в `.env.telemost`.
 
-Перезапуск отдельных сервисов не нужен: `run_start.sh` подхватывает `.env.telemost` при каждом `/meeting_start`.
+Перезапуск отдельных сервисов не нужен: `run_start.sh` подхватывает `.env.telemost` при каждом `/meeting_start`. После обновления репозитория **импортируйте заново** `n8n_workflow.json` (или вручную добавьте второй аргумент в команду SSH «Start Meeting», см. репозиторий).
 
 Проверка лога бота: `tail -f /tmp/telemost_recorder.log` — при старте будет строка про задан или не задан `TELEMOST_FINISH_WEBHOOK_URL`.
 

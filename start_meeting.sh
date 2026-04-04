@@ -1,12 +1,14 @@
 #!/bin/bash
 # start_meeting.sh — создать конференцию Телемост и запустить запись через Puppeteer-бота
-# Использование: ./start_meeting.sh "Название встречи"
+# Использование: ./start_meeting.sh "Название встречи" [telegram_chat_id]
+# Второй аргумент (числовой id чата) сохраняется в state для webhook при автофинишe в Телемосте.
 # Env: TELEMOST_TOKEN, RECORDINGS_DIR (опционально)
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 TITLE="${1:-Встреча $(date '+%d.%m.%Y %H:%M')}"
+TELEGRAM_CHAT_ID_ARG="${2:-}"
 STATE_FILE="/tmp/telemost_meeting.json"
 RECORDINGS_DIR="${RECORDINGS_DIR:-/opt/recordings/telemost}"
 LOG_FILE="/tmp/telemost_recorder.log"
@@ -69,15 +71,28 @@ if ! kill -0 "$RECORDER_PID" 2>/dev/null; then
   exit 1
 fi
 
-cat > "$STATE_FILE" <<EOF
-{
-  "pid": $RECORDER_PID,
-  "file": "$OUTPUT_FILE",
-  "conference_id": "$CONFERENCE_ID",
-  "join_url": "$JOIN_URL",
-  "title": "$TITLE",
-  "started_at": "$(date -Iseconds)"
-}
-EOF
+STARTED_AT="$(date -Iseconds)"
+
+BASE_JSON=$(jq -n \
+  --argjson pid "$RECORDER_PID" \
+  --arg file "$OUTPUT_FILE" \
+  --arg conference_id "$CONFERENCE_ID" \
+  --arg join_url "$JOIN_URL" \
+  --arg title "$TITLE" \
+  --arg started_at "$STARTED_AT" \
+  '{
+    pid: $pid,
+    file: $file,
+    conference_id: $conference_id,
+    join_url: $join_url,
+    title: $title,
+    started_at: $started_at
+  }')
+
+if [ -n "$TELEGRAM_CHAT_ID_ARG" ] && [[ "$TELEGRAM_CHAT_ID_ARG" =~ ^-?[0-9]+$ ]]; then
+  echo "$BASE_JSON" | jq --argjson telegram_chat_id "$TELEGRAM_CHAT_ID_ARG" '. + {telegram_chat_id: $telegram_chat_id}' >"$STATE_FILE"
+else
+  echo "$BASE_JSON" >"$STATE_FILE"
+fi
 
 echo "$STATE_FILE" | xargs cat
