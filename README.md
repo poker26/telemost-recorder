@@ -55,7 +55,7 @@ cd /opt/telemost-recorder
 python3 -m venv .venv
 ./.venv/bin/pip install boto3 requests
 mkdir -p /opt/recordings/telemost
-chmod +x start_meeting.sh stop_meeting.sh
+chmod +x start_meeting.sh join_meeting.sh stop_meeting.sh run_start.sh run_join.sh run_stop.sh run_transcribe.sh
 ```
 
 ### 2. OAuth-приложение Телемост
