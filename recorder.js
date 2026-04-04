@@ -10,15 +10,30 @@
  *   node recorder.js <join_url> <output_file>
  *
  * Остановка:
- *   Отправить SIGTERM — бот корректно завершит запись.
+ *   Отправить SIGTERM — бот корректно завершит запись (state оставляет stop_meeting.sh).
+ *
+ * Автоостановка при «Закончить встречу» в Телемосте:
+ *   Периодически ищем в тексте страницы маркеры TELEMOST_END_TEXT_MARKERS (подстроки).
+ *   При совпадении — корректная остановка, удаление /tmp/telemost_meeting.json и опционально
+ *   POST на TELEMOST_FINISH_WEBHOOK_URL (JSON как у stop_meeting.sh) для продолжения цепочки в n8n.
  */
 
 import puppeteer from "puppeteer";
-import { writeFileSync, appendFileSync, existsSync, readdirSync } from "fs";
+import {
+  writeFileSync,
+  appendFileSync,
+  existsSync,
+  readdirSync,
+  readFileSync,
+  unlinkSync,
+  statSync,
+} from "fs";
 import { resolve, join } from "path";
 import { homedir } from "os";
 import { execSync } from "child_process";
 import Xvfb from "xvfb";
+
+const STATE_FILE = "/tmp/telemost_meeting.json";
 
 const joinUrl = process.argv[2];
 const outputFile = process.argv[3];
@@ -240,38 +255,168 @@ const muteResult2 = await muteMicAndCamera();
 console.error(`[recorder] Mute в конференции: mic=${muteResult2.micDone}, cam=${muteResult2.camDone}`);
 
 const MAX_RECORDING_SEC = parseInt(process.env.MAX_RECORDING_SEC || "7200", 10);
-console.error(`[recorder] Запись активна. Макс. длительность: ${MAX_RECORDING_SEC}s. Ожидаем SIGTERM...`);
-
-const autoStopTimer = setTimeout(() => {
-  console.error(`[recorder] Автоматическая остановка по таймауту (${MAX_RECORDING_SEC}s)`);
-  stopRecording();
-}, MAX_RECORDING_SEC * 1000);
+console.error(`[recorder] Запись активна. Макс. длительность: ${MAX_RECORDING_SEC}s. Ожидаем SIGTERM или конец встречи в UI...`);
 
 // ── Graceful stop ────────────────────────────────────────────────────────────
 
 let stopping = false;
+let autoStopTimer = null;
+let endMeetingPollTimer = null;
 
-async function stopRecording() {
+function readMeetingState() {
+  try {
+    const raw = readFileSync(STATE_FILE, "utf8");
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+async function finalizeStateAndNotify(stopReason) {
+  if (stopReason === "signal") {
+    return;
+  }
+
+  const state = readMeetingState();
+  if (!state || Number(state.pid) !== process.pid) {
+    console.error("[recorder] Финализация: state не найден или чужой PID — пропуск");
+    return;
+  }
+
+  const startedAt = state.started_at || new Date().toISOString();
+  let durationSec = 0;
+  try {
+    const startMs = new Date(startedAt).getTime();
+    durationSec = Math.max(0, Math.floor((Date.now() - startMs) / 1000));
+  } catch {
+    durationSec = 0;
+  }
+
+  let fileSizeBytes = 0;
+  try {
+    fileSizeBytes = statSync(outputPath).size;
+  } catch {
+    fileSizeBytes = 0;
+  }
+
+  const payload = {
+    file: state.file,
+    title: state.title,
+    started_at: startedAt,
+    duration_sec: durationSec,
+    file_size_bytes: fileSizeBytes,
+    trigger: stopReason,
+  };
+
+  try {
+    unlinkSync(STATE_FILE);
+    console.error("[recorder] State file удалён после автоостановки");
+  } catch (err) {
+    console.error("[recorder] Не удалось удалить state file:", err.message);
+  }
+
+  const webhookUrl = process.env.TELEMOST_FINISH_WEBHOOK_URL;
+  if (!webhookUrl) {
+    return;
+  }
+
+  try {
+    const response = await fetch(webhookUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    console.error(`[recorder] TELEMOST_FINISH_WEBHOOK_URL → HTTP ${response.status}`);
+  } catch (err) {
+    console.error("[recorder] Ошибка webhook:", err.message);
+  }
+}
+
+async function stopRecording(stopReason = "signal") {
   if (stopping) return;
   stopping = true;
 
-  console.error("[recorder] Останавливаем запись...");
+  console.error(`[recorder] Останавливаем запись (причина: ${stopReason})...`);
+
+  if (endMeetingPollTimer) {
+    clearInterval(endMeetingPollTimer);
+    endMeetingPollTimer = null;
+  }
 
   try {
     await page.evaluate(() => {
       if (window.__stopRecorder) window.__stopRecorder();
     });
-  } catch {}
+  } catch {
+    // страница уже закрыта
+  }
 
   await new Promise((r) => setTimeout(r, 2000));
 
-  clearTimeout(autoStopTimer);
-  try { await browser.close(); } catch {}
-  try { xvfb.stop(); } catch {}
+  if (autoStopTimer) {
+    clearTimeout(autoStopTimer);
+    autoStopTimer = null;
+  }
+
+  try {
+    await browser.close();
+  } catch {
+    // ignore
+  }
+  try {
+    xvfb.stop();
+  } catch {
+    // ignore
+  }
 
   console.error(`[recorder] Запись сохранена: ${outputPath}`);
+
+  await finalizeStateAndNotify(stopReason);
+
   process.exit(0);
 }
 
-process.on("SIGINT", stopRecording);
-process.on("SIGTERM", stopRecording);
+autoStopTimer = setTimeout(() => {
+  console.error(`[recorder] Автоматическая остановка по таймауту (${MAX_RECORDING_SEC}s)`);
+  stopRecording("timeout");
+}, MAX_RECORDING_SEC * 1000);
+
+function startMeetingEndPolling() {
+  const periodMs =
+    Math.max(3, parseInt(process.env.TELEMOST_END_POLL_SEC || "8", 10)) * 1000;
+  const markers = (process.env.TELEMOST_END_TEXT_MARKERS ||
+    "встреча завершена,звонок завершён,созвон завершён,встреча окончена"
+  )
+    .split(",")
+    .map((segment) => segment.trim().toLowerCase())
+    .filter((segment) => segment.length > 0);
+
+  endMeetingPollTimer = setInterval(async () => {
+    if (stopping) return;
+    try {
+      const ended = await page.evaluate((textMarkers) => {
+        const pageText = (document.body?.innerText || "").toLowerCase();
+        return textMarkers.some((marker) => pageText.includes(marker));
+      }, markers);
+      if (ended) {
+        console.error("[recorder] Обнаружено окончание встречи по тексту страницы (TELEMOST_END_TEXT_MARKERS)");
+        if (endMeetingPollTimer) {
+          clearInterval(endMeetingPollTimer);
+          endMeetingPollTimer = null;
+        }
+        await stopRecording("ui_end");
+      }
+    } catch (err) {
+      console.error("[recorder] Опрос «конец встречи»:", err.message);
+    }
+  }, periodMs);
+}
+
+startMeetingEndPolling();
+
+process.on("SIGINT", () => {
+  stopRecording("signal");
+});
+process.on("SIGTERM", () => {
+  stopRecording("signal");
+});
