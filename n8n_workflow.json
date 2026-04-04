@@ -24,10 +24,14 @@
             {
               "value2": "/meeting_stop",
               "output": 1
+            },
+            {
+              "value2": "/meeting_join",
+              "output": 2
             }
           ]
         },
-        "fallbackOutput": 2
+        "fallbackOutput": 3
       },
       "name": "Route Command",
       "type": "n8n-nodes-base.switch",
@@ -94,6 +98,76 @@
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1,
       "position": [1260, 240]
+    },
+
+    {
+      "parameters": {
+        "jsCode": "const text = $input.first().json.message?.text || '';\nconst rest = text.replace(/^\\/meeting_join\\s*/i, '').trim();\nconst urlMatch = rest.match(/https?:\\/\\/[^\\s]+/);\nconst esc = (s) => String(s).replace(/\"/g, '\\\\\"');\nconst chatId = String($input.first().json.message.chat.id);\nif (!urlMatch) {\n  return [{ json: { command: `echo '{\"error\":\"Укажите ссылку Телемоста в том же сообщении после /meeting_join\"}'` } }];\n}\nconst joinUrl = urlMatch[0];\nconst titlePart = rest.replace(joinUrl, '').trim() || ('Встреча ' + new Date().toLocaleString('ru-RU'));\nconst command = '/opt/telemost-recorder/run_join.sh \"' + esc(joinUrl) + '\" \"' + esc(titlePart) + '\" \"' + esc(chatId) + '\"';\nreturn [{ json: { command } }];"
+      },
+      "name": "Build Join Command",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [540, 20]
+    },
+    {
+      "parameters": {
+        "command": "={{ $json.command }}"
+      },
+      "name": "Join Meeting",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [660, 20]
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json.stdout || '';\nconst err = $input.first().json.stderr || '';\nif (!raw.trim()) {\n  return [{ json: { error: err.trim() || 'join_meeting.sh вернул пустой ответ' } }];\n}\ntry {\n  return [{ json: JSON.parse(raw) }];\n} catch(e) {\n  return [{ json: { error: 'join_meeting.sh: ' + (err.trim() || raw.substring(0, 500)) } }];\n}"
+      },
+      "name": "Parse Join State",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [880, 20]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.error }}",
+              "operation": "isNotEmpty"
+            }
+          ]
+        }
+      },
+      "name": "Join Has Error?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1060, 20]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Telegram Trigger').first().json.message.chat.id }}",
+        "text": "=❌ Не удалось начать запись по ссылке:\n\n`{{ $json.error }}`",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "name": "Send Join Error",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [1260, -60]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Telegram Trigger').first().json.message.chat.id }}",
+        "text": "=✅ Запись по ссылке запущена\n\n📋 *{{ $json.title }}*\n🔗 {{ $json.join_url }}\n\n🔴 Запись идёт. Остановка: /meeting\\_stop",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "name": "Send Join Started",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [1260, 100]
     },
 
     {
@@ -247,7 +321,7 @@
     {
       "parameters": {
         "chatId": "={{ $('Telegram Trigger').first().json.message.chat.id }}",
-        "text": "Неизвестная команда.\n\nДоступные команды:\n/meeting\\_start [название] — создать и записать встречу\n/meeting\\_stop — остановить запись и транскрибировать",
+        "text": "Неизвестная команда.\n\nДоступные команды:\n/meeting\\_start [название] — создать встречу и записать\n/meeting\\_join https://… — записать по чужой ссылке\n/meeting\\_stop — остановить запись и транскрибировать",
         "additionalFields": {
           "parse_mode": "Markdown"
         }
@@ -266,7 +340,23 @@
       "main": [
         [{ "node": "Start Meeting", "type": "main", "index": 0 }],
         [{ "node": "Stop Meeting", "type": "main", "index": 0 }],
+        [{ "node": "Build Join Command", "type": "main", "index": 0 }],
         [{ "node": "Unknown Command", "type": "main", "index": 0 }]
+      ]
+    },
+    "Build Join Command": {
+      "main": [[{ "node": "Join Meeting", "type": "main", "index": 0 }]]
+    },
+    "Join Meeting": {
+      "main": [[{ "node": "Parse Join State", "type": "main", "index": 0 }]]
+    },
+    "Parse Join State": {
+      "main": [[{ "node": "Join Has Error?", "type": "main", "index": 0 }]]
+    },
+    "Join Has Error?": {
+      "main": [
+        [{ "node": "Send Join Error", "type": "main", "index": 0 }],
+        [{ "node": "Send Join Started", "type": "main", "index": 0 }]
       ]
     },
     "Start Meeting": {
