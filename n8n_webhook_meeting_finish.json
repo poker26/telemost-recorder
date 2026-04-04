@@ -1,0 +1,162 @@
+{
+  "name": "Telemost — автофиниш (webhook)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "telemost-recording-finished",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "a1b2c3d4-e5f6-7890-abcd-ef0011223344",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 400],
+      "webhookId": "a1b2c3d4-e5f6-7890-abcd-ef0011223344"
+    },
+    {
+      "parameters": {
+        "jsCode": "const root = $input.first().json;\nconst b = root.body ?? root;\nreturn [{\n  json: {\n    file: b.file,\n    title: b.title,\n    chat_id: String(b.chat_id || b.telegram_chat_id || ''),\n  },\n}];"
+      },
+      "id": "b2c3d4e5-f6a7-8901-bcde-f00112233445",
+      "name": "Normalize Webhook Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 400]
+    },
+    {
+      "parameters": {
+        "command": "={{ '/opt/telemost-recorder/run_transcribe.sh \"' + ($json.file || '').replace(/\"/g, '\\\\\"') + '\" \"' + ($json.title || '').replace(/\"/g, '\\\\\"') + '\"' }}"
+      },
+      "id": "c3d4e5f6-a7b8-9012-cdef-001122334456",
+      "name": "Run Transcription",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [680, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json.stdout || '';\nconst err = $input.first().json.stderr || '';\nif (!raw.trim()) {\n  return [{ json: { error: 'transcribe.py: ' + (err.trim() || 'пустой ответ') } }];\n}\ntry {\n  return [{ json: JSON.parse(raw) }];\n} catch(e) {\n  return [{ json: { error: 'transcribe.py: ' + (err.trim() || raw.substring(0, 500)) } }];\n}"
+      },
+      "id": "d4e5f6a7-b8c9-0123-def0-011223344567",
+      "name": "Parse Transcript",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 400]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.error }}",
+              "operation": "isNotEmpty"
+            }
+          ]
+        }
+      },
+      "id": "e5f6a7b8-c9d0-1234-ef01-122334455678",
+      "name": "Transcript Has Error?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1120, 400]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Normalize Webhook Payload').first().json.chat_id }}",
+        "text": "=❌ Ошибка транскрибации (автофиниш):\n\n`{{ $json.error }}`",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "id": "f6a7b8c9-d0e1-2345-f012-233445566789",
+      "name": "Send Transcribe Error",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [1340, 280],
+      "credentials": {
+        "telegramApi": {
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const t = $input.first().json;\nconst utterancesRaw = t.utterances ?? [];\nreturn [{\n  json: {\n    title: t.title ?? '',\n    file_path: t.file_path ?? null,\n    transcript: t.transcript ?? '',\n    utterances: JSON.stringify(utterancesRaw),\n    speaker_count: t.speaker_count ?? 0,\n    utterance_count: t.utterance_count ?? 0,\n    operation_id: t.operation_id ?? null,\n    transcribed_at: t.transcribed_at ?? new Date().toISOString(),\n  },\n}];"
+      },
+      "id": "a7b8c9d0-e1f2-3456-0123-344556677890",
+      "name": "Build Supabase Row",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1340, 480]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO public.meeting_transcripts (title, file_path, transcript, utterances, speaker_count, utterance_count, operation_id, transcribed_at) VALUES ($1, $2, $3, $4::jsonb, $5::integer, $6::integer, $7, $8::timestamptz)",
+        "options": {
+          "queryReplacement": "={{ [$json.title, $json.file_path, $json.transcript, $json.utterances, $json.speaker_count, $json.utterance_count, $json.operation_id, $json.transcribed_at] }}"
+        }
+      },
+      "id": "b8c9d0e1-f2a3-4567-1234-455667788901",
+      "name": "Save to Supabase",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1560, 480],
+      "credentials": {
+        "postgres": {
+          "name": "Supabase Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Normalize Webhook Payload').first().json.chat_id }}",
+        "text": "=📝 *{{ $('Parse Transcript').first().json.title }}*\n\n👥 Участников: {{ $('Parse Transcript').first().json.speaker_count }}\n💬 Реплик: {{ $('Parse Transcript').first().json.utterance_count }}\n\n{{ $('Parse Transcript').first().json.transcript.substring(0, 3000) }}{{ $('Parse Transcript').first().json.transcript.length > 3000 ? '\\n\\n...(полный текст сохранён в БД)' : '' }}",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "id": "c9d0e1f2-a3b4-5678-2345-566778899012",
+      "name": "Send Transcript",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [1780, 520],
+      "credentials": {
+        "telegramApi": {
+          "name": "Telegram Bot"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [[{ "node": "Normalize Webhook Payload", "type": "main", "index": 0 }]]
+    },
+    "Normalize Webhook Payload": {
+      "main": [[{ "node": "Run Transcription", "type": "main", "index": 0 }]]
+    },
+    "Run Transcription": {
+      "main": [[{ "node": "Parse Transcript", "type": "main", "index": 0 }]]
+    },
+    "Parse Transcript": {
+      "main": [[{ "node": "Transcript Has Error?", "type": "main", "index": 0 }]]
+    },
+    "Transcript Has Error?": {
+      "main": [
+        [{ "node": "Send Transcribe Error", "type": "main", "index": 0 }],
+        [
+          { "node": "Build Supabase Row", "type": "main", "index": 0 },
+          { "node": "Send Transcript", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Build Supabase Row": {
+      "main": [[{ "node": "Save to Supabase", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

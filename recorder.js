@@ -57,6 +57,14 @@ if (!joinMeetingPathname.startsWith("/j/")) {
   );
 }
 
+if (process.env.TELEMOST_FINISH_WEBHOOK_URL) {
+  console.error("[recorder] TELEMOST_FINISH_WEBHOOK_URL задан — после автоостановки будет POST в n8n");
+} else {
+  console.error(
+    "[recorder] ВНИМАНИЕ: TELEMOST_FINISH_WEBHOOK_URL не задан — при завершении встречи в Телемосте n8n и Telegram не вызовутся (нужен отдельный Webhook workflow, см. README).",
+  );
+}
+
 const outputPath = resolve(outputFile);
 console.error(`[recorder] join_url: ${joinUrl}`);
 console.error(`[recorder] output:   ${outputPath}`);
@@ -322,6 +330,11 @@ async function finalizeStateAndNotify(stopReason) {
     trigger: stopReason,
   };
 
+  const notifyChatId = process.env.TELEGRAM_NOTIFY_CHAT_ID;
+  if (notifyChatId) {
+    payload.chat_id = notifyChatId;
+  }
+
   try {
     unlinkSync(STATE_FILE);
     console.error("[recorder] State file удалён после автоостановки");
@@ -331,6 +344,11 @@ async function finalizeStateAndNotify(stopReason) {
 
   const webhookUrl = process.env.TELEMOST_FINISH_WEBHOOK_URL;
   if (!webhookUrl) {
+    if (stopReason === "ui_end" || stopReason === "timeout") {
+      console.error(
+        "[recorder] Автоостановка без webhook: добавьте TELEMOST_FINISH_WEBHOOK_URL в .env.telemost и workflow в n8n (см. README).",
+      );
+    }
     return;
   }
 
@@ -398,6 +416,7 @@ autoStopTimer = setTimeout(() => {
 function startMeetingEndPolling() {
   const periodMs =
     Math.max(3, parseInt(process.env.TELEMOST_END_POLL_SEC || "8", 10)) * 1000;
+  const requireCreateCallButton = process.env.TELEMOST_END_RELAXED !== "1";
   const markersRaw = process.env.TELEMOST_END_TEXT_MARKERS;
   const textMarkers =
     markersRaw === undefined || markersRaw.trim() === ""
@@ -407,30 +426,43 @@ function startMeetingEndPolling() {
           .map((segment) => segment.trim().toLowerCase())
           .filter((segment) => segment.length > 0);
 
+  let lastLoggedPathname = "";
+
   endMeetingPollTimer = setInterval(async () => {
     if (stopping) return;
     try {
-      const endedByUi = await page.evaluate((joinPath) => {
-        try {
-          if (!joinPath || !joinPath.startsWith("/j/")) {
+      const pathNow = await page.evaluate(() => window.location.pathname || "");
+      if (pathNow !== lastLoggedPathname) {
+        console.error(`[recorder] pathname → ${pathNow}`);
+        lastLoggedPathname = pathNow;
+      }
+
+      const endedByUi = await page.evaluate(
+        (joinPath, strictCreate) => {
+          try {
+            if (!joinPath || !joinPath.startsWith("/j/")) {
+              return false;
+            }
+            const host = window.location.hostname || "";
+            if (!host.includes("telemost.yandex.ru")) {
+              return false;
+            }
+            const path = window.location.pathname || "";
+            const onTelemostHome = path === "/" || path === "";
+            if (!onTelemostHome) {
+              return false;
+            }
+            if (!strictCreate) {
+              return true;
+            }
+            return document.querySelector('[data-testid="create-call-button"]') !== null;
+          } catch {
             return false;
           }
-          const host = window.location.hostname || "";
-          if (!host.includes("telemost.yandex.ru")) {
-            return false;
-          }
-          const path = window.location.pathname || "";
-          const onTelemostHome = path === "/" || path === "";
-          if (!onTelemostHome) {
-            return false;
-          }
-          const hasCreateCallButton =
-            document.querySelector('[data-testid="create-call-button"]') !== null;
-          return hasCreateCallButton;
-        } catch {
-          return false;
-        }
-      }, joinMeetingPathname);
+        },
+        joinMeetingPathname,
+        requireCreateCallButton,
+      );
 
       let endedByText = false;
       if (textMarkers.length > 0) {
@@ -443,7 +475,7 @@ function startMeetingEndPolling() {
       if (endedByUi || endedByText) {
         console.error(
           endedByUi
-            ? "[recorder] Встреча завершена: переход на главную Телемоста (pathname /, create-call-button)"
+            ? `[recorder] Встреча завершена: главная Телемоста (/)${requireCreateCallButton ? ", create-call-button" : ", TELEMOST_END_RELAXED=1"}`
             : "[recorder] Встреча завершена: TELEMOST_END_TEXT_MARKERS",
         );
         if (endMeetingPollTimer) {
