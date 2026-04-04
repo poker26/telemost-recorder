@@ -1,16 +1,27 @@
 -- Supabase: таблица для хранения транскриптов встреч
+--
+-- Контракт с transcribe.py / n8n: в БД попадают только поля из узла «Build Supabase Row»
+-- (whitelist), а не весь JSON stdout — иначе Postgres-нода подставляет лишние ключи
+-- (operation_id и т.д.) и падает с «column does not exist».
+--
 CREATE TABLE IF NOT EXISTS meeting_transcripts (
-    id              BIGSERIAL PRIMARY KEY,
-    title           TEXT NOT NULL,
-    file_path       TEXT,
-    transcript      TEXT,
-    utterances      JSONB,          -- массив {speaker, text, start_ms, end_ms}
-    speaker_count   INTEGER,
-    transcribed_at  TIMESTAMPTZ DEFAULT NOW(),
-    created_at      TIMESTAMPTZ DEFAULT NOW()
+    id               BIGSERIAL PRIMARY KEY,
+    title            TEXT NOT NULL,
+    file_path        TEXT,
+    transcript       TEXT,
+    utterances       JSONB,          -- массив {speaker, text, start_ms, end_ms}
+    speaker_count    INTEGER,
+    utterance_count  INTEGER,        -- число реплик (дубль len(utterances), удобно для отчётов)
+    operation_id     TEXT,            -- id операции SpeechKit (отладка / поддержка)
+    transcribed_at   TIMESTAMPTZ DEFAULT NOW(),
+    created_at       TIMESTAMPTZ DEFAULT NOW()
 );
 
 CREATE INDEX idx_meeting_transcripts_created ON meeting_transcripts(created_at DESC);
+
+-- Уже созданная таблица без новых колонок — выполнить один раз в Supabase SQL:
+-- ALTER TABLE meeting_transcripts ADD COLUMN IF NOT EXISTS utterance_count INTEGER;
+-- ALTER TABLE meeting_transcripts ADD COLUMN IF NOT EXISTS operation_id TEXT;
 
 -- ─────────────────────────────────────────────────────────────
 -- ИНСТРУКЦИЯ ПО УСТАНОВКЕ

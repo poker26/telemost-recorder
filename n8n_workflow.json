@@ -205,16 +205,25 @@
     },
     {
       "parameters": {
+        "jsCode": "const t = $input.first().json;\nreturn [{\n  json: {\n    title: t.title ?? '',\n    file_path: t.file_path ?? null,\n    transcript: t.transcript ?? '',\n    utterances: t.utterances ?? [],\n    speaker_count: t.speaker_count ?? 0,\n    utterance_count: t.utterance_count ?? 0,\n    operation_id: t.operation_id ?? null,\n    transcribed_at: t.transcribed_at ?? new Date().toISOString(),\n  },\n}];"
+      },
+      "name": "Build Supabase Row",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1925, 560]
+    },
+    {
+      "parameters": {
         "operation": "insert",
         "schema": "public",
         "table": "meeting_transcripts",
-        "columns": "title,file_path,transcript,utterances,speaker_count,transcribed_at",
+        "columns": "title,file_path,transcript,utterances,speaker_count,utterance_count,operation_id,transcribed_at",
         "additionalFields": {}
       },
       "name": "Save to Supabase",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2,
-      "position": [2040, 520],
+      "position": [2150, 560],
       "credentials": {
         "postgres": {
           "name": "Supabase Postgres"
@@ -297,10 +306,13 @@
       "main": [
         [{ "node": "Send Transcribe Error", "type": "main", "index": 0 }],
         [
-          { "node": "Save to Supabase", "type": "main", "index": 0 },
+          { "node": "Build Supabase Row", "type": "main", "index": 0 },
           { "node": "Send Transcript", "type": "main", "index": 0 }
         ]
       ]
+    },
+    "Build Supabase Row": {
+      "main": [[{ "node": "Save to Supabase", "type": "main", "index": 0 }]]
     }
   }
 }
