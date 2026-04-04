@@ -1,0 +1,222 @@
+{
+  "id": "a1b2c3d4-e5f6-7890-abcd-ef00summary01",
+  "name": "Telemost — Meeting Summary (sub-workflow)",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "sw-trigger-001",
+      "name": "When Executed by Another Workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        240,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const OPENROUTER_MODEL = 'openai/gpt-4o-mini';\nconst MAX_TRANSCRIPT_CHARS = 100000;\nconst SYSTEM_PROMPT = [\n  'You are a meeting transcript analyst. The entire answer MUST be in Russian, as structured Markdown.',\n  '',\n  'Rules:',\n  '- Do not invent facts that are not in the transcript.',\n  '- If the meeting was brainstorming without formal decisions, say so; list only ideas that appear in the text.',\n  '- List decisions and agreements only when they clearly follow from the text.',\n  '',\n  'Structure: 1) Brief 2) Discussion topics 3) Decisions/agreements (or none) 4) Ideas 5) Open questions and next steps.',\n  'Human-editable template in repo: docs/meeting_summary_prompt.md',\n].join('\\n');\nconst input = $input.first().json;\nconst title = String(input.title ?? '');\nconst rawTranscript = String(input.transcript ?? '');\nconst chatId = String(input.chat_id ?? '');\nconst source = String(input.source ?? '');\nlet transcript = rawTranscript;\nif (transcript.length > MAX_TRANSCRIPT_CHARS) {\n  transcript = transcript.slice(0, MAX_TRANSCRIPT_CHARS) + '\\n\\n[truncated for API]';\n}\nconst userContent = ['Title: ' + title, 'Source: ' + (source || 'n/a'), '', 'Transcript:', transcript].join('\\n');\nconst requestBody = {\n  model: OPENROUTER_MODEL,\n  messages: [\n    { role: 'system', content: SYSTEM_PROMPT },\n    { role: 'user', content: userContent },\n  ],\n};\nreturn [{ json: { chat_id: chatId, title, source, requestBody } }];"
+      },
+      "id": "sw-build-002",
+      "name": "Build OpenRouter Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        460,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://openrouter.ai/api/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "HTTP-Referer",
+              "value": "https://github.com/poker26/telemost-recorder"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.requestBody) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "sw-http-003",
+      "name": "OpenRouter Chat",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        680,
+        300
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "OpenRouter"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const build = $('Build OpenRouter Request').first().json;\nconst chatId = build.chat_id;\nconst title = build.title;\nconst row = $input.first().json;\nlet errMsg = '';\nlet summaryText = '';\nif (row.error) {\n  errMsg = String(row.error.message || row.error);\n}\nconst body = row.body !== undefined && row.body !== null ? row.body : row;\ntry {\n  if (body && body.error) {\n    errMsg = typeof body.error === 'string' ? body.error : JSON.stringify(body.error);\n  } else if (body && body.choices && body.choices[0] && body.choices[0].message) {\n    summaryText = String(body.choices[0].message.content || '').trim();\n  }\n} catch (e) {\n  errMsg = e.message || String(e);\n}\nif (!summaryText && !errMsg) {\n  errMsg = 'Empty or unexpected OpenRouter response';\n}\nconst MAX_TG = 3900;\nif (summaryText.length > MAX_TG) {\n  summaryText = summaryText.slice(0, MAX_TG) + '\\n\\n...(truncated for Telegram)';\n}\nreturn [{ json: { chat_id: chatId, title, summary_text: summaryText, error: errMsg || null } }];"
+      },
+      "id": "sw-parse-004",
+      "name": "Parse OpenRouter Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        900,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.error }}",
+              "operation": "isNotEmpty"
+            }
+          ]
+        }
+      },
+      "id": "sw-if-005",
+      "name": "Summary Failed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        1120,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chat_id }}",
+        "text": "=📌 Саммари встречи — *{{ $json.title }}*\n\n{{ $json.summary_text }}",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "id": "sw-tg-ok-006",
+      "name": "Send Summary",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1340,
+        200
+      ],
+      "credentials": {
+        "telegramApi": {
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chat_id }}",
+        "text": "=❌ Не удалось построить саммари:\n\n`{{ $json.error }}`",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "id": "sw-tg-err-007",
+      "name": "Send Summary Error",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1340,
+        400
+      ],
+      "credentials": {
+        "telegramApi": {
+          "name": "Telegram Bot"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Build OpenRouter Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build OpenRouter Request": {
+      "main": [
+        [
+          {
+            "node": "OpenRouter Chat",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenRouter Chat": {
+      "main": [
+        [
+          {
+            "node": "Parse OpenRouter Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse OpenRouter Response": {
+      "main": [
+        [
+          {
+            "node": "Summary Failed?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Summary Failed?": {
+      "main": [
+        [
+          {
+            "node": "Send Summary Error",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "templateCredsSetupCompleted": false
+  }
+}

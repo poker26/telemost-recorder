@@ -139,12 +139,42 @@
       "name": "Send Transcript",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1,
-      "position": [1820, 520],
+      "position": [1820, 560],
       "credentials": {
         "telegramApi": {
           "name": "Telegram Bot"
         }
       }
+    },
+    {
+      "parameters": {
+        "jsCode": "const parsed = $('Parse Transcript').first().json;\nconst chatId = String($('Normalize Webhook Payload').first().json.chat_id);\nreturn [{\n  json: {\n    title: parsed.title ?? '',\n    transcript: parsed.transcript ?? '',\n    chat_id: chatId,\n    source: 'webhook_auto_finish',\n  },\n}];"
+      },
+      "id": "d0e1f2a3-b4c5-6789-3456-677889900123",
+      "name": "Prepare Summary Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1820, 380]
+    },
+    {
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "value": "a1b2c3d4-e5f6-7890-abcd-ef00summary01",
+          "mode": "list",
+          "cachedResultName": "Telemost — Meeting Summary (sub-workflow)"
+        },
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "d0e1f2a3-b4c5-6789-3456-677889900124",
+      "name": "Execute Meeting Summary",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [2040, 380],
+      "continueOnFail": true
     }
   ],
   "connections": {
@@ -166,14 +196,22 @@
     "Transcript Has Error?": {
       "main": [
         [{ "node": "Send Transcribe Error", "type": "main", "index": 0 }],
-        [
-          { "node": "Build Supabase Row", "type": "main", "index": 0 },
-          { "node": "Send Transcript", "type": "main", "index": 0 }
-        ]
+        [{ "node": "Build Supabase Row", "type": "main", "index": 0 }]
       ]
     },
     "Build Supabase Row": {
       "main": [[{ "node": "Save to Supabase", "type": "main", "index": 0 }]]
+    },
+    "Save to Supabase": {
+      "main": [
+        [
+          { "node": "Prepare Summary Payload", "type": "main", "index": 0 },
+          { "node": "Send Transcript", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Prepare Summary Payload": {
+      "main": [[{ "node": "Execute Meeting Summary", "type": "main", "index": 0 }]]
     }
   },
   "settings": {

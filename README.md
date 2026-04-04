@@ -35,7 +35,11 @@ SpeechKit принимает аудио только из Yandex Object Storage 
 | `stop_meeting.sh` | Остановить FFmpeg, вернуть путь к файлу |
 | `transcribe.py` | Загрузить в MinIO + YC S3, транскрибировать через SpeechKit, диаризация |
 | `n8n_workflow.json` | Импортировать в n8n (Settings → Import Workflow) |
+| `n8n_webhook_meeting_finish.json` | Отдельный workflow: webhook автофиниша |
+| `n8n_subworkflow_meeting_summary.json` | Sub-workflow: саммари через OpenRouter → Telegram |
+| `scripts/generate_n8n_subworkflow_meeting_summary.py` | Пересборка JSON sub-workflow (UTF-8) при правках |
 | `setup.sql` | DDL таблицы Supabase + инструкция по установке |
+| `docs/meeting_summary_prompt.md` | Текст промпта саммари (для редактора и n8n) |
 
 ## Требования
 
@@ -104,6 +108,13 @@ chmod 600 /opt/telemost-recorder/.env.telemost
 
 Импортировать `n8n_workflow.json` через **Settings → Import Workflow**.
 Настроить credentials: Telegram Bot + Postgres (Supabase) + SSH.
+
+#### Саммари после транскрипта (OpenRouter)
+
+1. Импортировать **`n8n_subworkflow_meeting_summary.json`** отдельным workflow, **активировать** его.
+2. В узле **OpenRouter Chat** выбрать уже настроенный в n8n credential типа **Header Auth** (часто имя `OpenRouter`): заголовок **`Authorization`**, значение **`Bearer <ваш_ключ_OpenRouter>`**. Если имя credential другое — создайте или перепривяжите в узле.
+3. Импортировать или обновить **`n8n_workflow.json`** и **`n8n_webhook_meeting_finish.json`**. В узле **Execute Meeting Summary** при необходимости заново выберите sub-workflow по имени (id в файле: `a1b2c3d4-e5f6-7890-abcd-ef00summary01`; после импорта n8n может показать другой id — важно указать правильный workflow в списке).
+4. Модель и системный промпт настраиваются в узле **Build OpenRouter Request** в sub-workflow; подробный русскоязычный шаблон — в `docs/meeting_summary_prompt.md`.
 
 ### 7. Автофиниш встречи в Телемосте (без `/meeting_stop`)
 
