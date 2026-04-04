@@ -295,7 +295,7 @@ def main():
 
     output = {
         "title": title,
-        "file": file_path,
+        "file_path": file_path,
         "operation_id": op_id,
         "transcribed_at": datetime.now().isoformat(),
         "transcript": transcript_text,
