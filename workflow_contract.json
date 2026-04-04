@@ -1,0 +1,37 @@
+{
+  "description": "Единый контракт полей: transcribe.py stdout → Build Supabase Row → INSERT. Менять только здесь + setup.sql + узлы по ссылке на этот файл в комментариях.",
+  "transcribe_stdout_keys": [
+    "title",
+    "file_path",
+    "operation_id",
+    "transcribed_at",
+    "transcript",
+    "utterances",
+    "utterance_count",
+    "speaker_count"
+  ],
+  "build_supabase_row_keys_in_order": [
+    "title",
+    "file_path",
+    "transcript",
+    "utterances",
+    "speaker_count",
+    "utterance_count",
+    "operation_id",
+    "transcribed_at"
+  ],
+  "postgres_insert_sql_column_order": [
+    "title",
+    "file_path",
+    "transcript",
+    "utterances",
+    "speaker_count",
+    "utterance_count",
+    "operation_id",
+    "transcribed_at"
+  ],
+  "notes": {
+    "utterances": "В Build Supabase Row всегда JSON.stringify (строка JSON). В SQL — параметр $4::jsonb.",
+    "not_stored_in_db": "Поля только в stdout transcribe, не в INSERT: нет — все ключи либо в таблице, либо служебные (id, created_at)."
+  }
+}

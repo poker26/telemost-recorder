@@ -214,15 +214,15 @@
     },
     {
       "parameters": {
-        "operation": "insert",
-        "schema": "public",
-        "table": "meeting_transcripts",
-        "columns": "title,file_path,transcript,utterances,speaker_count,utterance_count,operation_id,transcribed_at",
-        "additionalFields": {}
+        "operation": "executeQuery",
+        "query": "INSERT INTO public.meeting_transcripts (title, file_path, transcript, utterances, speaker_count, utterance_count, operation_id, transcribed_at) VALUES ($1, $2, $3, $4::jsonb, $5::integer, $6::integer, $7, $8::timestamptz)",
+        "options": {
+          "queryReplacement": "={{ [$json.title, $json.file_path, $json.transcript, $json.utterances, $json.speaker_count, $json.utterance_count, $json.operation_id, $json.transcribed_at] }}"
+        }
       },
       "name": "Save to Supabase",
       "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2,
+      "typeVersion": 2.5,
       "position": [2150, 560],
       "credentials": {
         "postgres": {

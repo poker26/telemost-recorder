@@ -1,8 +1,8 @@
 -- Supabase: таблица для хранения транскриптов встреч
 --
--- Контракт с transcribe.py / n8n: в БД попадают только поля из узла «Build Supabase Row»
--- (whitelist), а не весь JSON stdout — иначе Postgres-нода подставляет лишние ключи
--- (operation_id и т.д.) и падает с «column does not exist».
+-- Контракт полей: файл workflow_contract.json + скрипт verify_workflow_contract.py
+-- (запуск: python verify_workflow_contract.py). В БД — параметризованный INSERT ($4::jsonb)
+-- в n8n, не режим Insert с сырым JSON.
 --
 CREATE TABLE IF NOT EXISTS meeting_transcripts (
     id               BIGSERIAL PRIMARY KEY,
