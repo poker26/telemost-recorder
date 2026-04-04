@@ -239,7 +239,13 @@ await new Promise((r) => setTimeout(r, 15000));
 const muteResult2 = await muteMicAndCamera();
 console.error(`[recorder] Mute в конференции: mic=${muteResult2.micDone}, cam=${muteResult2.camDone}`);
 
-console.error("[recorder] Запись активна. Ожидаем SIGTERM для остановки...");
+const MAX_RECORDING_SEC = parseInt(process.env.MAX_RECORDING_SEC || "7200", 10);
+console.error(`[recorder] Запись активна. Макс. длительность: ${MAX_RECORDING_SEC}s. Ожидаем SIGTERM...`);
+
+const autoStopTimer = setTimeout(() => {
+  console.error(`[recorder] Автоматическая остановка по таймауту (${MAX_RECORDING_SEC}s)`);
+  stopRecording();
+}, MAX_RECORDING_SEC * 1000);
 
 // ── Graceful stop ────────────────────────────────────────────────────────────
 
@@ -259,6 +265,7 @@ async function stopRecording() {
 
   await new Promise((r) => setTimeout(r, 2000));
 
+  clearTimeout(autoStopTimer);
   try { await browser.close(); } catch {}
   try { xvfb.stop(); } catch {}
 
