@@ -31,6 +31,7 @@ import requests
 from botocore.config import Config
 from pathlib import Path
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 # ── Конфигурация ──────────────────────────────────────────────────────────────
 
@@ -322,7 +323,7 @@ def main():
         "title": title,
         "file_path": file_path,
         "operation_id": op_id,
-        "transcribed_at": datetime.now().isoformat(),
+        "transcribed_at": datetime.now(ZoneInfo("Europe/Moscow")).isoformat(),
         "transcript": transcript_text,
         "utterances": utterances,
         "utterance_count": len(utterances),

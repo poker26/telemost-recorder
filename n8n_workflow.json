@@ -41,7 +41,7 @@
 
     {
       "parameters": {
-        "command": "={{ '/opt/telemost-recorder/run_start.sh \"' + (($('Telegram Trigger').first().json.message.text.replace('/meeting_start', '').trim() || 'Встреча ' + new Date().toLocaleString('ru-RU')).replace(/\"/g, '\\\\\"')) + '\" \"' + String($('Telegram Trigger').first().json.message.chat.id) + '\"' }}"
+        "command": "={{ '/opt/telemost-recorder/run_start.sh \"' + (($('Telegram Trigger').first().json.message.text.replace('/meeting_start', '').trim() || 'Встреча ' + new Date().toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' })).replace(/\"/g, '\\\\\"')) + '\" \"' + String($('Telegram Trigger').first().json.message.chat.id) + '\"' }}"
       },
       "name": "Start Meeting",
       "type": "n8n-nodes-base.ssh",
@@ -102,7 +102,7 @@
 
     {
       "parameters": {
-        "jsCode": "const text = $input.first().json.message?.text || '';\nconst rest = text.replace(/^\\/meeting_join\\s*/i, '').trim();\nconst urlMatch = rest.match(/https?:\\/\\/[^\\s]+/);\nconst esc = (s) => String(s).replace(/\"/g, '\\\\\"');\nconst chatId = String($input.first().json.message.chat.id);\nif (!urlMatch) {\n  return [{ json: { command: `echo '{\"error\":\"Укажите ссылку Телемоста в том же сообщении после /meeting_join\"}'` } }];\n}\nconst joinUrl = urlMatch[0];\nconst titlePart = rest.replace(joinUrl, '').trim() || ('Встреча ' + new Date().toLocaleString('ru-RU'));\nconst command = '/opt/telemost-recorder/run_join.sh \"' + esc(joinUrl) + '\" \"' + esc(titlePart) + '\" \"' + esc(chatId) + '\"';\nreturn [{ json: { command } }];"
+        "jsCode": "const text = $input.first().json.message?.text || '';\nconst rest = text.replace(/^\\/meeting_join\\s*/i, '').trim();\nconst urlMatch = rest.match(/https?:\\/\\/[^\\s]+/);\nconst esc = (s) => String(s).replace(/\"/g, '\\\\\"');\nconst chatId = String($input.first().json.message.chat.id);\nif (!urlMatch) {\n  return [{ json: { command: `echo '{\"error\":\"Укажите ссылку Телемоста в том же сообщении после /meeting_join\"}'` } }];\n}\nconst joinUrl = urlMatch[0];\nconst titlePart = rest.replace(joinUrl, '').trim() || ('Встреча ' + new Date().toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' }));\nconst command = '/opt/telemost-recorder/run_join.sh \"' + esc(joinUrl) + '\" \"' + esc(titlePart) + '\" \"' + esc(chatId) + '\"';\nreturn [{ json: { command } }];"
       },
       "name": "Build Join Command",
       "type": "n8n-nodes-base.code",
@@ -220,7 +220,7 @@
     {
       "parameters": {
         "chatId": "={{ $('Telegram Trigger').first().json.message.chat.id }}",
-        "text": "=⏹ Запись остановлена.\n📁 Файл: `{{ $json.file }}`\n⏱ Длительность: {{ Math.round($json.duration_sec / 60) }} мин\n\n⏳ Запускаю транскрибацию...",
+        "text": "=⏹ Запись остановлена.\n📁 Файл: `{{ $json.file }}`\n🕐 Начало (МСК): {{ new Date($json.started_at).toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' }) }}\n⏱ Длительность: {{ Math.round($json.duration_sec / 60) }} мин\n\n⏳ Запускаю транскрибацию...",
         "additionalFields": {
           "parse_mode": "Markdown"
         }
@@ -307,7 +307,7 @@
     {
       "parameters": {
         "chatId": "={{ $('Telegram Trigger').first().json.message.chat.id }}",
-        "text": "=📝 *{{ $('Parse Transcript').first().json.title }}*\n\n👥 Участников: {{ $('Parse Transcript').first().json.speaker_count }}\n💬 Реплик: {{ $('Parse Transcript').first().json.utterance_count }}\n\n{{ $('Parse Transcript').first().json.transcript.substring(0, 3000) }}{{ $('Parse Transcript').first().json.transcript.length > 3000 ? '\\n\\n...(полный текст сохранён в БД)' : '' }}",
+        "text": "=📝 *{{ $('Parse Transcript').first().json.title }}*\n\n🕐 {{ new Date($('Parse Transcript').first().json.transcribed_at).toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' }) }}\n\n👥 Участников: {{ $('Parse Transcript').first().json.speaker_count }}\n💬 Реплик: {{ $('Parse Transcript').first().json.utterance_count }}\n\n{{ $('Parse Transcript').first().json.transcript.substring(0, 3000) }}{{ $('Parse Transcript').first().json.transcript.length > 3000 ? '\\n\\n...(полный текст сохранён в БД)' : '' }}",
         "additionalFields": {
           "parse_mode": "Markdown"
         }

@@ -133,6 +133,8 @@ chmod 600 /opt/telemost-recorder/.env.telemost
 
 В [@BotFather](https://t.me/BotFather) можно добавить команду `meeting_join` в меню бота — по желанию.
 
+Время в сообщениях бота и в поле «готово» транскрипта задаётся как **московское** (`Europe/Moscow`), не UTC.
+
 ### SSH ноды в workflow
 
 В workflow используются SSH-ноды (`Start Meeting`, `Join Meeting`, `Stop Meeting`, `Run Transcription`), которые выполняют команды на сервере и загружают секреты из `/opt/telemost-recorder/.env.telemost`.

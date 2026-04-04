@@ -28,7 +28,7 @@
     {
       "parameters": {
         "chatId": "={{ $('Normalize Webhook Payload').first().json.chat_id }}",
-        "text": "={{ 'Встреча завершена, начинаю расшифровку\\n\\n📋 ' + String($('Normalize Webhook Payload').first().json.title || '') }}",
+        "text": "={{ 'Встреча завершена, начинаю расшифровку\\n\\n🕐 ' + new Date().toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' }) + '\\n\\n📋 ' + String($('Normalize Webhook Payload').first().json.title || '') }}",
         "additionalFields": {}
       },
       "id": "b1a2c3d4-e5f6-7890-abcd-ef0099887766",
@@ -130,7 +130,7 @@
     {
       "parameters": {
         "chatId": "={{ $('Normalize Webhook Payload').first().json.chat_id }}",
-        "text": "=📝 *{{ $('Parse Transcript').first().json.title }}*\n\n👥 Участников: {{ $('Parse Transcript').first().json.speaker_count }}\n💬 Реплик: {{ $('Parse Transcript').first().json.utterance_count }}\n\n{{ $('Parse Transcript').first().json.transcript.substring(0, 3000) }}{{ $('Parse Transcript').first().json.transcript.length > 3000 ? '\\n\\n...(полный текст сохранён в БД)' : '' }}",
+        "text": "=📝 *{{ $('Parse Transcript').first().json.title }}*\n\n🕐 {{ new Date($('Parse Transcript').first().json.transcribed_at).toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' }) }}\n\n👥 Участников: {{ $('Parse Transcript').first().json.speaker_count }}\n💬 Реплик: {{ $('Parse Transcript').first().json.utterance_count }}\n\n{{ $('Parse Transcript').first().json.transcript.substring(0, 3000) }}{{ $('Parse Transcript').first().json.transcript.length > 3000 ? '\\n\\n...(полный текст сохранён в БД)' : '' }}",
         "additionalFields": {
           "parse_mode": "Markdown"
         }

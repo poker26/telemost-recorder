@@ -7,7 +7,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 JOIN_URL="${1:-}"
-TITLE="${2:-Встреча по ссылке $(date '+%d.%m.%Y %H:%M')}"
+TITLE="${2:-Встреча по ссылке $(TZ=Europe/Moscow date '+%d.%m.%Y %H:%M')}"
 TELEGRAM_CHAT_ID_ARG="${3:-}"
 STATE_FILE="/tmp/telemost_meeting.json"
 RECORDINGS_DIR="${RECORDINGS_DIR:-/opt/recordings/telemost}"
@@ -59,7 +59,7 @@ if ! kill -0 "$RECORDER_PID" 2>/dev/null; then
   exit 1
 fi
 
-STARTED_AT="$(date -Iseconds)"
+STARTED_AT="$(TZ=Europe/Moscow date -Iseconds)"
 
 BASE_JSON=$(jq -n \
   --argjson pid "$RECORDER_PID" \
