@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS meeting_transcripts (
     title            TEXT NOT NULL,
     file_path        TEXT,
     transcript       TEXT,
-    utterances       JSONB,          -- массив {speaker, text, start_ms, end_ms}
+    utterances       JSONB,          -- массив {speaker, text, start_ms, end_ms}; в n8n передавать JSON-строкой (JSON.stringify), иначе Postgres получает text[]
     speaker_count    INTEGER,
     utterance_count  INTEGER,        -- число реплик (дубль len(utterances), удобно для отчётов)
     operation_id     TEXT,            -- id операции SpeechKit (отладка / поддержка)

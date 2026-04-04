@@ -205,7 +205,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const t = $input.first().json;\nreturn [{\n  json: {\n    title: t.title ?? '',\n    file_path: t.file_path ?? null,\n    transcript: t.transcript ?? '',\n    utterances: t.utterances ?? [],\n    speaker_count: t.speaker_count ?? 0,\n    utterance_count: t.utterance_count ?? 0,\n    operation_id: t.operation_id ?? null,\n    transcribed_at: t.transcribed_at ?? new Date().toISOString(),\n  },\n}];"
+        "jsCode": "const t = $input.first().json;\nconst utterancesRaw = t.utterances ?? [];\nreturn [{\n  json: {\n    title: t.title ?? '',\n    file_path: t.file_path ?? null,\n    transcript: t.transcript ?? '',\n    utterances: JSON.stringify(utterancesRaw),\n    speaker_count: t.speaker_count ?? 0,\n    utterance_count: t.utterance_count ?? 0,\n    operation_id: t.operation_id ?? null,\n    transcribed_at: t.transcribed_at ?? new Date().toISOString(),\n  },\n}];"
       },
       "name": "Build Supabase Row",
       "type": "n8n-nodes-base.code",
