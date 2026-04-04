@@ -176,6 +176,35 @@
     },
     {
       "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.error }}",
+              "operation": "isNotEmpty"
+            }
+          ]
+        }
+      },
+      "name": "Transcript Has Error?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1810, 520]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Telegram Trigger').first().json.message.chat.id }}",
+        "text": "=❌ Ошибка транскрибации:\n\n`{{ $json.error }}`",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "name": "Send Transcribe Error",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [2040, 380]
+    },
+    {
+      "parameters": {
         "operation": "insert",
         "schema": "public",
         "table": "meeting_transcripts",
@@ -185,7 +214,7 @@
       "name": "Save to Supabase",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2,
-      "position": [1920, 440],
+      "position": [2040, 520],
       "credentials": {
         "postgres": {
           "name": "Supabase Postgres"
@@ -203,7 +232,7 @@
       "name": "Send Transcript",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1,
-      "position": [1920, 600]
+      "position": [2260, 600]
     },
 
     {
@@ -262,9 +291,15 @@
       "main": [[{ "node": "Parse Transcript", "type": "main", "index": 0 }]]
     },
     "Parse Transcript": {
+      "main": [[{ "node": "Transcript Has Error?", "type": "main", "index": 0 }]]
+    },
+    "Transcript Has Error?": {
       "main": [
-        [{ "node": "Save to Supabase", "type": "main", "index": 0 }],
-        [{ "node": "Send Transcript", "type": "main", "index": 0 }]
+        [{ "node": "Send Transcribe Error", "type": "main", "index": 0 }],
+        [
+          { "node": "Save to Supabase", "type": "main", "index": 0 },
+          { "node": "Send Transcript", "type": "main", "index": 0 }
+        ]
       ]
     }
   }

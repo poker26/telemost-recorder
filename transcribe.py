@@ -266,20 +266,45 @@ def main():
         print(f"ERROR: файл не найден: {file_path}", file=sys.stderr)
         sys.exit(1)
 
+    file_size_bytes = Path(file_path).stat().st_size
+    if file_size_bytes == 0:
+        print(
+            "ERROR: файл записи пуст (0 байт). Запись не успела накопиться или бот упал.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
     audio_for_speechkit = file_path
     if file_path.endswith(".webm"):
         audio_for_speechkit = file_path.rsplit(".", 1)[0] + ".ogg"
         print(f"Конвертация {file_path} → {audio_for_speechkit}", file=sys.stderr)
-        subprocess.run(
+        ffmpeg_result = subprocess.run(
             [
-                "ffmpeg", "-i", file_path,
-                "-vn", "-ac", "1", "-ar", "16000",
-                "-c:a", "libopus", "-b:a", "32k",
-                audio_for_speechkit, "-y",
+                "ffmpeg",
+                "-y",
+                "-i",
+                file_path,
+                "-vn",
+                "-ac",
+                "1",
+                "-ar",
+                "16000",
+                "-c:a",
+                "libopus",
+                "-b:a",
+                "32k",
+                audio_for_speechkit,
             ],
-            check=True,
             capture_output=True,
+            text=True,
         )
+        if ffmpeg_result.returncode != 0:
+            print(
+                f"ERROR: ffmpeg код {ffmpeg_result.returncode}",
+                file=sys.stderr,
+            )
+            print(ffmpeg_result.stderr or ffmpeg_result.stdout or "", file=sys.stderr)
+            sys.exit(1)
 
     upload_to_minio(file_path)
 
