@@ -109,7 +109,7 @@ chmod 600 /opt/telemost-recorder/.env.telemost
 
 Основной workflow (`n8n_workflow.json`) запускается **только из Telegram** (`/meeting_start`, `/meeting_stop`). Когда встречу завершают кнопкой в Телемосте, `recorder.js` останавливается сам, но **n8n и бот не вызываются**, пока вы не настроите отдельный **POST webhook**.
 
-1. Импортировать второй workflow: `n8n_webhook_meeting_finish.json` (или собрать аналог: узел **Webhook** → те же шаги, что после «Notify Stop» в основном workflow).
+1. Импортировать второй workflow: `n8n_webhook_meeting_finish.json` (или собрать аналог: **Webhook** → уведомление в Telegram «Встреча завершена, начинаю расшифровку» → транскрибация и далее как в основном потоке).
 2. В узле **Webhook** включить режим ответа **«Immediately» / `onReceived`** (чтобы `recorder` не ждал окончания транскрибации по HTTP).
 3. **Активировать** workflow и скопировать **Production Webhook URL** (например `https://ваш-домен/webhook/.../telemost-recording-finished`).
 4. В `/opt/telemost-recorder/.env.telemost` задать `TELEMOST_FINISH_WEBHOOK_URL` (обязательно для вызова n8n).
