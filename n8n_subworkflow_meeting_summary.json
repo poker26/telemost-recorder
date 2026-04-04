@@ -3,7 +3,9 @@
   "name": "Telemost — Meeting Summary (sub-workflow)",
   "nodes": [
     {
-      "parameters": {},
+      "parameters": {
+        "inputSource": "passthrough"
+      },
       "id": "sw-trigger-001",
       "name": "When Executed by Another Workflow",
       "type": "n8n-nodes-base.executeWorkflowTrigger",
