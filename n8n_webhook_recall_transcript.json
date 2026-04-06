@@ -59,7 +59,7 @@
             {
               "value1": "={{ $json._route }}",
               "value2": "db",
-              "operation": "equals"
+              "operation": "equal"
             }
           ]
         }
