@@ -100,7 +100,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const t = $input.first().json;\nconst utterancesRaw = t.utterances ?? [];\nreturn [{\n  json: {\n    title: t.title ?? '',\n    file_path: t.file_path ?? null,\n    transcript: t.transcript ?? '',\n    utterances: JSON.stringify(utterancesRaw),\n    speaker_count: t.speaker_count ?? 0,\n    utterance_count: t.utterance_count ?? 0,\n    operation_id: t.operation_id ?? null,\n    transcribed_at: t.transcribed_at ?? new Date().toISOString(),\n  },\n}];"
+        "jsCode": "const t = $input.first().json;\nconst utterancesRaw = t.utterances ?? [];\nconst chatId = String($('Normalize Webhook Payload').first().json.chat_id ?? '');\nreturn [{\n  json: {\n    title: t.title ?? '',\n    file_path: t.file_path ?? null,\n    transcript: t.transcript ?? '',\n    utterances: JSON.stringify(utterancesRaw),\n    speaker_count: t.speaker_count ?? 0,\n    utterance_count: t.utterance_count ?? 0,\n    operation_id: t.operation_id ?? null,\n    transcribed_at: t.transcribed_at ?? new Date().toISOString(),\n    _n8n_chat_id: chatId,\n    _n8n_source: 'webhook_auto_finish',\n  },\n}];"
       },
       "id": "a7b8c9d0-e1f2-3456-0123-344556677890",
       "name": "Build Supabase Row",
@@ -148,7 +148,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const parsed = $('Parse Transcript').first().json;\nconst chatId = String($('Normalize Webhook Payload').first().json.chat_id);\nreturn [{\n  json: {\n    title: parsed.title ?? '',\n    transcript: parsed.transcript ?? '',\n    chat_id: chatId,\n    source: 'webhook_auto_finish',\n  },\n}];"
+        "jsCode": "const build = $input.first().json;\nreturn [{\n  json: {\n    title: String(build.title ?? ''),\n    transcript: String(build.transcript ?? ''),\n    chat_id: String(build._n8n_chat_id ?? ''),\n    source: String(build._n8n_source ?? 'webhook_auto_finish'),\n  },\n}];"
       },
       "id": "d0e1f2a3-b4c5-6789-3456-677889900123",
       "name": "Prepare Summary Payload",
@@ -200,15 +200,15 @@
       ]
     },
     "Build Supabase Row": {
-      "main": [[{ "node": "Save to Supabase", "type": "main", "index": 0 }]]
-    },
-    "Save to Supabase": {
       "main": [
         [
-          { "node": "Prepare Summary Payload", "type": "main", "index": 0 },
-          { "node": "Send Transcript", "type": "main", "index": 0 }
+          { "node": "Save to Supabase", "type": "main", "index": 0 },
+          { "node": "Prepare Summary Payload", "type": "main", "index": 0 }
         ]
       ]
+    },
+    "Save to Supabase": {
+      "main": [[{ "node": "Send Transcript", "type": "main", "index": 0 }]]
     },
     "Prepare Summary Payload": {
       "main": [[{ "node": "Execute Meeting Summary", "type": "main", "index": 0 }]]

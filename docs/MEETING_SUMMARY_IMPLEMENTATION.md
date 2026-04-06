@@ -17,7 +17,7 @@
 
 2. **Родительские** [`n8n_workflow.json`](../n8n_workflow.json) и [`n8n_webhook_meeting_finish.json`](../n8n_webhook_meeting_finish.json):
    - Ветка успеха после `Parse Transcript`: только **Build Supabase Row** (убрать параллель с **Send Transcript** отсюда).
-   - После **Save to Supabase** два выхода: **Send Transcript** и цепочка **Prepare Summary Payload** (Code) → **Execute Workflow** (sub-workflow выше, `continueOnFail: true`).
+   - После **Build Supabase Row** два параллельных выхода: **Save to Supabase** → **Send Transcript** и **Prepare Summary Payload** (Code, только `$input` из Build) → **Execute Workflow** (sub-workflow, `continueOnFail: true`). Так в **Prepare** не используется `$('…')`, и n8n не падает с «Referenced node doesn't exist».
    - **Prepare Summary Payload** (Telegram-ветка): `title`, `transcript`, `chat_id` из `Parse Transcript` + `Telegram Trigger`; (webhook-ветка): `chat_id` из `Normalize Webhook Payload`, `source`: `webhook_auto_finish`.
 
 3. **README**: импорт sub-workflow, привязка credential OpenRouter к узлу HTTP, выбор workflow в **Execute Workflow**, активация sub-workflow.
@@ -69,40 +69,26 @@ Full human-editable template for editors: docs/meeting_summary_prompt.md in the 
 ### Общее для `n8n_workflow.json` и `n8n_webhook_meeting_finish.json`
 
 - **Transcript Has Error?** — ветка «успех» (без ошибки): только **Build Supabase Row** (убрать второй выход на **Send Transcript**).
-- **Save to Supabase** → **два** исходящих: **Send Transcript** и **Prepare Summary Payload** (параллельно).
+- **Build Supabase Row** → **два** исходящих: **Save to Supabase** (далее **Send Transcript**) и **Prepare Summary Payload** (параллельно с Save).
 - **Prepare Summary Payload** → **Execute Workflow** (`continueOnFail: true`), workflow — импортированный sub-workflow саммари.
 
-### Новый узел **Prepare Summary Payload** (Code)
+### Узел **Prepare Summary Payload** (Code)
 
-**Telemost Meeting Recorder** (`n8n_workflow.json`):
+Вход — прямой выход **Build Supabase Row** (тот же объект, что идёт в INSERT): в **Build** уже добавлены `_n8n_chat_id` и `_n8n_source`. В **Prepare** только `$input`, без `$('…')`:
 
 ```javascript
-const parsed = $('Parse Transcript').first().json;
-const chatId = String($('Telegram Trigger').first().json.message.chat.id);
+const build = $input.first().json;
 return [{
   json: {
-    title: parsed.title ?? '',
-    transcript: parsed.transcript ?? '',
-    chat_id: chatId,
-    source: 'telegram_bot',
+    title: String(build.title ?? ''),
+    transcript: String(build.transcript ?? ''),
+    chat_id: String(build._n8n_chat_id ?? ''),
+    source: String(build._n8n_source ?? 'telegram_bot'),
   },
 }];
 ```
 
-**Webhook автофиниш** (`n8n_webhook_meeting_finish.json`):
-
-```javascript
-const parsed = $('Parse Transcript').first().json;
-const chatId = String($('Normalize Webhook Payload').first().json.chat_id);
-return [{
-  json: {
-    title: parsed.title ?? '',
-    transcript: parsed.transcript ?? '',
-    chat_id: chatId,
-    source: 'webhook_auto_finish',
-  },
-}];
-```
+Для webhook в `source` по умолчанию подставьте `'webhook_auto_finish'`, если поле пустое.
 
 ### Узел **Execute Workflow** (n8n)
 
@@ -113,7 +99,7 @@ return [{
 ### Фрагмент `connections` (логика)
 
 - `"Transcript Has Error?": { "main": [ [ Send Transcribe Error ], [ Build Supabase Row ] ] }` — **ровно один** узел во второй ветке.
-- `"Save to Supabase": { "main": [ [ { node: Prepare Summary Payload }, { node: Send Transcript } ] ] }` — порядок в массиве не критичен для параллели.
+- `"Build Supabase Row": { "main": [ [ Save to Supabase, Prepare Summary Payload ] ] }`, затем `"Save to Supabase": { "main": [ [ Send Transcript ] ] }`.
 - `"Prepare Summary Payload": { "main": [ [ { node: Execute Workflow, ... } ] ] }`.
 
 После правок: `node -e "JSON.parse(require('fs').readFileSync('n8n_subworkflow_meeting_summary.json','utf8'))"` (или эквивалент на Python) и при наличии — `python verify_workflow_contract.py`.

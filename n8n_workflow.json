@@ -279,7 +279,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const t = $input.first().json;\nconst utterancesRaw = t.utterances ?? [];\nreturn [{\n  json: {\n    title: t.title ?? '',\n    file_path: t.file_path ?? null,\n    transcript: t.transcript ?? '',\n    utterances: JSON.stringify(utterancesRaw),\n    speaker_count: t.speaker_count ?? 0,\n    utterance_count: t.utterance_count ?? 0,\n    operation_id: t.operation_id ?? null,\n    transcribed_at: t.transcribed_at ?? new Date().toISOString(),\n  },\n}];"
+        "jsCode": "const t = $input.first().json;\nconst utterancesRaw = t.utterances ?? [];\nconst chatId = String($('Telegram Trigger').first().json.message.chat.id);\nreturn [{\n  json: {\n    title: t.title ?? '',\n    file_path: t.file_path ?? null,\n    transcript: t.transcript ?? '',\n    utterances: JSON.stringify(utterancesRaw),\n    speaker_count: t.speaker_count ?? 0,\n    utterance_count: t.utterance_count ?? 0,\n    operation_id: t.operation_id ?? null,\n    transcribed_at: t.transcribed_at ?? new Date().toISOString(),\n    _n8n_chat_id: chatId,\n    _n8n_source: 'telegram_bot',\n  },\n}];"
       },
       "name": "Build Supabase Row",
       "type": "n8n-nodes-base.code",
@@ -306,8 +306,8 @@
     },
     {
       "parameters": {
-        "chatId": "={{ $('Telegram Trigger').first().json.message.chat.id }}",
-        "text": "=📝 *{{ $('Parse Transcript').first().json.title }}*\n\n🕐 {{ new Date($('Parse Transcript').first().json.transcribed_at).toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' }) }}\n\n👥 Участников: {{ $('Parse Transcript').first().json.speaker_count }}\n💬 Реплик: {{ $('Parse Transcript').first().json.utterance_count }}\n\n{{ $('Parse Transcript').first().json.transcript.substring(0, 3000) }}{{ $('Parse Transcript').first().json.transcript.length > 3000 ? '\\n\\n...(полный текст сохранён в БД)' : '' }}",
+        "chatId": "={{ $('Build Supabase Row').first().json._n8n_chat_id }}",
+        "text": "=📝 *{{ $('Build Supabase Row').first().json.title }}*\n\n🕐 {{ new Date($('Build Supabase Row').first().json.transcribed_at).toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' }) }}\n\n👥 Участников: {{ $('Build Supabase Row').first().json.speaker_count }}\n💬 Реплик: {{ $('Build Supabase Row').first().json.utterance_count }}\n\n{{ $('Build Supabase Row').first().json.transcript.substring(0, 3000) }}{{ $('Build Supabase Row').first().json.transcript.length > 3000 ? '\\n\\n...(полный текст сохранён в БД)' : '' }}",
         "additionalFields": {
           "parse_mode": "Markdown"
         }
@@ -319,7 +319,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const parsed = $('Parse Transcript').first().json;\nconst chatId = String($('Telegram Trigger').first().json.message.chat.id);\nreturn [{\n  json: {\n    title: parsed.title ?? '',\n    transcript: parsed.transcript ?? '',\n    chat_id: chatId,\n    source: 'telegram_bot',\n  },\n}];"
+        "jsCode": "const build = $input.first().json;\nreturn [{\n  json: {\n    title: String(build.title ?? ''),\n    transcript: String(build.transcript ?? ''),\n    chat_id: String(build._n8n_chat_id ?? ''),\n    source: String(build._n8n_source ?? 'telegram_bot'),\n  },\n}];"
       },
       "name": "Prepare Summary Payload",
       "type": "n8n-nodes-base.code",
@@ -429,15 +429,15 @@
       ]
     },
     "Build Supabase Row": {
-      "main": [[{ "node": "Save to Supabase", "type": "main", "index": 0 }]]
-    },
-    "Save to Supabase": {
       "main": [
         [
-          { "node": "Prepare Summary Payload", "type": "main", "index": 0 },
-          { "node": "Send Transcript", "type": "main", "index": 0 }
+          { "node": "Save to Supabase", "type": "main", "index": 0 },
+          { "node": "Prepare Summary Payload", "type": "main", "index": 0 }
         ]
       ]
+    },
+    "Save to Supabase": {
+      "main": [[{ "node": "Send Transcript", "type": "main", "index": 0 }]]
     },
     "Prepare Summary Payload": {
       "main": [[{ "node": "Execute Meeting Summary", "type": "main", "index": 0 }]]
