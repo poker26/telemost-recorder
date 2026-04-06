@@ -36,6 +36,7 @@ SpeechKit принимает аудио только из Yandex Object Storage 
 | `transcribe.py` | Загрузить в MinIO + YC S3, транскрибировать через SpeechKit, диаризация |
 | `n8n_workflow.json` | Импортировать в n8n (Settings → Import Workflow) |
 | `n8n_webhook_meeting_finish.json` | Отдельный workflow: webhook автофиниша |
+| `n8n_webhook_recall_transcript.json` | Webhook: саммари по `transcript_id` из Supabase или по тексту в теле запроса (`curl`) |
 | `n8n_subworkflow_meeting_summary.json` | Sub-workflow: саммари через OpenRouter → Telegram |
 | `scripts/generate_n8n_subworkflow_meeting_summary.py` | Пересборка JSON sub-workflow (UTF-8) при правках |
 | `setup.sql` | DDL таблицы Supabase + инструкция по установке |
@@ -129,6 +130,29 @@ chmod 600 /opt/telemost-recorder/.env.telemost
 Перезапуск отдельных сервисов не нужен: `run_start.sh` подхватывает `.env.telemost` при каждом `/meeting_start`. После обновления репозитория **импортируйте заново** `n8n_workflow.json` (или вручную добавьте второй аргумент в команду SSH «Start Meeting», см. репозиторий).
 
 Проверка лога бота: `tail -f /tmp/telemost_recorder.log` — при старте будет строка про задан или не задан `TELEMOST_FINISH_WEBHOOK_URL`.
+
+### 8. Webhook «повтор»: саммари по строке из Supabase или по готовому тексту
+
+Импортируйте **`n8n_webhook_recall_transcript.json`**, укажите credential **Supabase Postgres** (как в других workflow), активируйте workflow. Узел **Execute Meeting Summary** должен ссылаться на sub-workflow саммари (см. п. 6).
+
+**Путь webhook:** `POST .../webhook/.../telemost-recall-transcript` (точный **Production URL** скопируйте из узла Webhook после активации). Ответ HTTP приходит сразу (`onReceived`), саммари уходит в Telegram асинхронно.
+
+**Тело JSON (один из вариантов):**
+
+- **Из БД:** `transcript_id` — значение `meeting_transcripts.id`, плюс обязательно `chat_id` (куда слать в Telegram), опционально `source`. Поля **`transcript_id` и `transcript` одновременно не передавайте.**
+- **Готовый текст:** `title`, `transcript`, `chat_id`, опционально `source` — без `transcript_id`.
+
+**Опциональная защита:** в узле **Normalize Recall Request** задайте константу `EXPECT` (длинная случайная строка). Тогда в запросе нужен заголовок **`X-Recall-Secret`** или поле **`secret`** в JSON с тем же значением. Пустой `EXPECT` — проверка отключена (не рекомендуется для публичного URL).
+
+**Пример `curl` (саммари по уже сохранённой строке):**
+
+```bash
+curl -X POST "https://ВАШ-N8N/webhook/ВАШ-ID/telemost-recall-transcript" -H "Content-Type: application/json" -d "{\"transcript_id\": 42, \"chat_id\": \"ВАШ_TELEGRAM_CHAT_ID\", \"source\": \"curl_db\"}"
+```
+
+**Пример с готовым текстом (файл `payload.json`):** поля `title`, `transcript`, `chat_id`, `source`.
+
+Путь к аудио на диске / в MinIO этот webhook **не трогает** — только чтение текста из таблицы или из тела запроса.
 
 ## Использование
 

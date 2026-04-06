@@ -1,0 +1,152 @@
+{
+  "name": "Telemost — webhook: саммари из БД или JSON",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "telemost-recall-transcript",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "b2c3d4e5-f6a7-8901-bcde-ef00recallweb01",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 400],
+      "webhookId": "b2c3d4e5-f6a7-8901-bcde-ef00recallweb01"
+    },
+    {
+      "parameters": {
+        "jsCode": "const EXPECT = '';\nconst root = $input.first().json;\nconst headers = root.headers || {};\nconst b = root.body !== undefined && root.body !== null ? root.body : root;\nconst hdrSecret = headers['x-recall-secret'] || headers['X-Recall-Secret'] || '';\nconst token = String(hdrSecret || b.secret || '').trim();\nif (EXPECT && token !== EXPECT) {\n  return [{ json: { _error: 'Unauthorized: set X-Recall-Secret header or body.secret, or leave EXPECT empty in this node' } }];\n}\nconst chatId = String(b.chat_id ?? b.telegram_chat_id ?? '').trim();\nconst sourceDefault = String(b.source ?? 'webhook_recall');\nif (!chatId) {\n  return [{ json: { _error: 'chat_id is required (Telegram chat id)' } }];\n}\nconst idRaw = b.transcript_id ?? b.meeting_transcript_id ?? b.db_id;\nconst transcriptId = idRaw !== undefined && idRaw !== null && String(idRaw).trim() !== '' ? String(idRaw).trim() : '';\nconst transcript = String(b.transcript ?? '');\nconst hasTranscript = transcript.trim().length > 0;\nconst title = String(b.title ?? '');\nif (transcriptId && hasTranscript) {\n  return [{ json: { _error: 'Use either transcript_id (load from Supabase) or transcript (inline), not both' } }];\n}\nif (!transcriptId && !hasTranscript) {\n  return [{ json: { _error: 'Provide transcript_id (bigint in meeting_transcripts) or transcript (text)' } }];\n}\nif (transcriptId) {\n  return [{ json: { _route: 'db', transcript_id: transcriptId, chat_id: chatId, source: sourceDefault } }];\n}\nreturn [{ json: { _route: 'inline', title, transcript, chat_id: chatId, source: sourceDefault } }];"
+      },
+      "id": "b2c3d4e5-f6a7-8901-bcde-ef00recallnorm02",
+      "name": "Normalize Recall Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 400]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json._error }}",
+              "operation": "isNotEmpty"
+            }
+          ]
+        }
+      },
+      "id": "b2c3d4e5-f6a7-8901-bcde-ef00recalliferr03",
+      "name": "Request Invalid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [680, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "const msg = $input.first().json._error || 'Invalid request';\nthrow new Error(msg);"
+      },
+      "id": "b2c3d4e5-f6a7-8901-bcde-ef00recallthrow04",
+      "name": "Throw Validation Error",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 280]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json._route }}",
+              "value2": "db",
+              "operation": "equals"
+            }
+          ]
+        }
+      },
+      "id": "b2c3d4e5-f6a7-8901-bcde-ef00recallifdb05",
+      "name": "Load From Database?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [900, 520]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT COALESCE(mt.title, '') AS title, COALESCE(mt.transcript, '') AS transcript, $2::text AS chat_id, $3::text AS source FROM public.meeting_transcripts mt WHERE mt.id = $1::bigint LIMIT 1",
+        "options": {
+          "queryReplacement": "={{ [$json.transcript_id, $json.chat_id, $json.source] }}"
+        }
+      },
+      "id": "b2c3d4e5-f6a7-8901-bcde-ef00recallpg06",
+      "name": "Load Transcript Row",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1120, 440],
+      "credentials": {
+        "postgres": {
+          "name": "Supabase Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const row = $input.first().json;\nconst title = String(row.title ?? '').trim();\nconst transcript = String(row.transcript ?? '').trim();\nif (!title && !transcript) {\n  throw new Error('No meeting_transcripts row for this transcript_id, or empty title and transcript');\n}\nreturn [{ json: { title, transcript, chat_id: String(row.chat_id ?? ''), source: String(row.source ?? 'webhook_db_row') } }];"
+      },
+      "id": "b2c3d4e5-f6a7-8901-bcde-ef00recallcheck07",
+      "name": "Ensure Row Loaded",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1340, 440]
+    },
+    {
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "value": "a1b2c3d4-e5f6-7890-abcd-ef00summary01",
+          "mode": "list",
+          "cachedResultName": "Telemost — Meeting Summary (sub-workflow)"
+        },
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "b2c3d4e5-f6a7-8901-bcde-ef00recallexec08",
+      "name": "Execute Meeting Summary",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [1560, 520],
+      "continueOnFail": true
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [[{ "node": "Normalize Recall Request", "type": "main", "index": 0 }]]
+    },
+    "Normalize Recall Request": {
+      "main": [[{ "node": "Request Invalid?", "type": "main", "index": 0 }]]
+    },
+    "Request Invalid?": {
+      "main": [
+        [{ "node": "Throw Validation Error", "type": "main", "index": 0 }],
+        [{ "node": "Load From Database?", "type": "main", "index": 0 }]
+      ]
+    },
+    "Load From Database?": {
+      "main": [
+        [{ "node": "Load Transcript Row", "type": "main", "index": 0 }],
+        [{ "node": "Execute Meeting Summary", "type": "main", "index": 0 }]
+      ]
+    },
+    "Load Transcript Row": {
+      "main": [[{ "node": "Ensure Row Loaded", "type": "main", "index": 0 }]]
+    },
+    "Ensure Row Loaded": {
+      "main": [[{ "node": "Execute Meeting Summary", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

@@ -1,6 +1,6 @@
 # Саммари встречи — статус сборки
 
-**Сборка в репозитории выполнена:** `n8n_subworkflow_meeting_summary.json`, обновлены `n8n_workflow.json` и `n8n_webhook_meeting_finish.json`, генератор `scripts/generate_n8n_subworkflow_meeting_summary.py`. Подробности для продакшена — в **README** (раздел про OpenRouter).
+**Сборка в репозитории выполнена:** `n8n_subworkflow_meeting_summary.json`, обновлены `n8n_workflow.json` и `n8n_webhook_meeting_finish.json`, генератор `scripts/generate_n8n_subworkflow_meeting_summary.py`. Дополнительно: **`n8n_webhook_recall_transcript.json`** — отдельный POST webhook для повтора саммари по `transcript_id` из Supabase или по inline-тексту (см. README §8). Подробности для продакшена — в **README** (раздел про OpenRouter).
 
 ## Что уже есть
 
