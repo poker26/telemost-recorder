@@ -72,23 +72,11 @@ Full human-editable template for editors: docs/meeting_summary_prompt.md in the 
 - **Build Supabase Row** → **два** исходящих: **Save to Supabase** (далее **Send Transcript**) и **Prepare Summary Payload** (параллельно с Save).
 - **Prepare Summary Payload** → **Execute Workflow** (`continueOnFail: true`), workflow — импортированный sub-workflow саммари.
 
-### Узел **Prepare Summary Payload** (Code)
+### Узел **Prepare Summary Payload** (Edit Fields / **Set**)
 
-Вход — прямой выход **Build Supabase Row** (тот же объект, что идёт в INSERT): в **Build** уже добавлены `_n8n_chat_id` и `_n8n_source`. В **Prepare** только `$input`, без `$('…')`:
+Вход — прямой выход **Build Supabase Row**. В **Build** уже есть `_n8n_chat_id` и `_n8n_source`. Используется узел **Set** (не Code): в выражениях только **`{{ $json.... }}`**. В Code-узле конструкция **`$input`** в частых сборках n8n ошибочно разбирается как **`$('input')`**, что даёт «Referenced node doesn't exist».
 
-```javascript
-const build = $input.first().json;
-return [{
-  json: {
-    title: String(build.title ?? ''),
-    transcript: String(build.transcript ?? ''),
-    chat_id: String(build._n8n_chat_id ?? ''),
-    source: String(build._n8n_source ?? 'telegram_bot'),
-  },
-}];
-```
-
-Для webhook в `source` по умолчанию подставьте `'webhook_auto_finish'`, если поле пустое.
+Поля: `title`, `transcript`, `chat_id` ← `_n8n_chat_id`, `source` ← `_n8n_source`, **Include in output: только заданные поля** (`include: none`).
 
 ### Узел **Execute Workflow** (n8n)
 

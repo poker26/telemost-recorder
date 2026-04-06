@@ -319,11 +319,38 @@
     },
     {
       "parameters": {
-        "jsCode": "const build = $input.first().json;\nreturn [{\n  json: {\n    title: String(build.title ?? ''),\n    transcript: String(build.transcript ?? ''),\n    chat_id: String(build._n8n_chat_id ?? ''),\n    source: String(build._n8n_source ?? 'telegram_bot'),\n  },\n}];"
+        "mode": "manual",
+        "duplicateItem": false,
+        "fields": {
+          "values": [
+            {
+              "name": "title",
+              "type": "stringValue",
+              "stringValue": "={{ $json.title }}"
+            },
+            {
+              "name": "transcript",
+              "type": "stringValue",
+              "stringValue": "={{ $json.transcript }}"
+            },
+            {
+              "name": "chat_id",
+              "type": "stringValue",
+              "stringValue": "={{ $json._n8n_chat_id }}"
+            },
+            {
+              "name": "source",
+              "type": "stringValue",
+              "stringValue": "={{ $json._n8n_source }}"
+            }
+          ]
+        },
+        "include": "none",
+        "options": {}
       },
       "name": "Prepare Summary Payload",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.2,
       "position": [2370, 480],
       "id": "f1a2b3c4-d5e6-4789-a012-3456789abc01"
     },

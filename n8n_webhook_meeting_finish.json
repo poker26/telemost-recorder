@@ -148,12 +148,39 @@
     },
     {
       "parameters": {
-        "jsCode": "const build = $input.first().json;\nreturn [{\n  json: {\n    title: String(build.title ?? ''),\n    transcript: String(build.transcript ?? ''),\n    chat_id: String(build._n8n_chat_id ?? ''),\n    source: String(build._n8n_source ?? 'webhook_auto_finish'),\n  },\n}];"
+        "mode": "manual",
+        "duplicateItem": false,
+        "fields": {
+          "values": [
+            {
+              "name": "title",
+              "type": "stringValue",
+              "stringValue": "={{ $json.title }}"
+            },
+            {
+              "name": "transcript",
+              "type": "stringValue",
+              "stringValue": "={{ $json.transcript }}"
+            },
+            {
+              "name": "chat_id",
+              "type": "stringValue",
+              "stringValue": "={{ $json._n8n_chat_id }}"
+            },
+            {
+              "name": "source",
+              "type": "stringValue",
+              "stringValue": "={{ $json._n8n_source }}"
+            }
+          ]
+        },
+        "include": "none",
+        "options": {}
       },
       "id": "d0e1f2a3-b4c5-6789-3456-677889900123",
       "name": "Prepare Summary Payload",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.2,
       "position": [1820, 380]
     },
     {
