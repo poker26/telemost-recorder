@@ -28,9 +28,11 @@ import {
   readFileSync,
   unlinkSync,
   statSync,
+  mkdtempSync,
+  rmSync,
 } from "fs";
 import { resolve, join } from "path";
-import { homedir } from "os";
+import { homedir, tmpdir } from "os";
 import { execSync } from "child_process";
 import Xvfb from "xvfb";
 
@@ -68,6 +70,8 @@ if (process.env.TELEMOST_FINISH_WEBHOOK_URL) {
 const outputPath = resolve(outputFile);
 console.error(`[recorder] join_url: ${joinUrl}`);
 console.error(`[recorder] output:   ${outputPath}`);
+const chromeUserDataDir = mkdtempSync(join(tmpdir(), "telemost-puppeteer-"));
+console.error(`[recorder] Chrome profile: ${chromeUserDataDir}`);
 
 // ── Chrome discovery ─────────────────────────────────────────────────────────
 
@@ -96,13 +100,19 @@ const xvfb = new Xvfb({
   xvfb_args: ["-screen", "0", "1280x720x24", "-ac"],
 });
 
-xvfb.start((err) => {
-  if (err) {
-    console.error("[recorder] Xvfb не запустился:", err.message);
-    process.exit(1);
-  }
-});
+function startXvfb() {
+  return new Promise((resolveStart, rejectStart) => {
+    xvfb.start((err) => {
+      if (err) {
+        rejectStart(err);
+        return;
+      }
+      resolveStart();
+    });
+  });
+}
 
+await startXvfb();
 console.error(`[recorder] Xvfb display: ${xvfb._display}`);
 
 // ── Write empty file so stop_meeting.sh sees it ──────────────────────────────
@@ -111,9 +121,121 @@ writeFileSync(outputPath, "");
 
 // ── Browser launch ───────────────────────────────────────────────────────────
 
-const browser = await puppeteer.launch({
+let browser = null;
+let page = null;
+let cleanupInProgress = false;
+
+async function closeBrowserGracefully() {
+  if (!browser) {
+    return;
+  }
+  try {
+    await Promise.race([
+      browser.close(),
+      new Promise((_, rejectClose) => {
+        setTimeout(() => rejectClose(new Error("browser.close timeout")), 7000);
+      }),
+    ]);
+  } catch (closeError) {
+    console.error("[recorder] browser.close() не успел/упал, делаем kill процесса браузера");
+    try {
+      const browserProcess = browser.process();
+      if (browserProcess?.pid) {
+        process.kill(browserProcess.pid, "SIGKILL");
+      }
+    } catch {
+      // ignore
+    }
+  } finally {
+    browser = null;
+  }
+}
+
+function killChromeByProfilePath(profilePath) {
+  if (!profilePath) {
+    return;
+  }
+  try {
+    execSync(`pkill -TERM -f "${profilePath}"`, { stdio: "ignore" });
+  } catch {
+    // no processes matched
+  }
+  try {
+    execSync(`pkill -KILL -f "${profilePath}"`, { stdio: "ignore" });
+  } catch {
+    // no processes matched
+  }
+}
+
+function stopXvfbSafely() {
+  try {
+    xvfb.stop();
+  } catch {
+    // ignore
+  }
+}
+
+function removeChromeProfileDir(profilePath) {
+  try {
+    rmSync(profilePath, { recursive: true, force: true });
+  } catch {
+    // ignore
+  }
+}
+
+async function cleanupResources(reason) {
+  if (cleanupInProgress) {
+    return;
+  }
+  cleanupInProgress = true;
+  console.error(`[recorder] cleanupResources: ${reason}`);
+  try {
+    if (page) {
+      try {
+        await page.close({ runBeforeUnload: false });
+      } catch {
+        // ignore
+      } finally {
+        page = null;
+      }
+    }
+    await closeBrowserGracefully();
+    killChromeByProfilePath(chromeUserDataDir);
+  } finally {
+    stopXvfbSafely();
+    removeChromeProfileDir(chromeUserDataDir);
+    cleanupInProgress = false;
+  }
+}
+
+process.on("SIGINT", () => {
+  stopRecording("signal");
+});
+process.on("SIGTERM", () => {
+  stopRecording("signal");
+});
+process.on("uncaughtException", async (error) => {
+  try {
+    console.error("[recorder] uncaughtException:", error?.stack || error?.message || String(error));
+    await cleanupResources("uncaughtException");
+  } finally {
+    process.exit(1);
+  }
+});
+process.on("unhandledRejection", async (reason) => {
+  try {
+    const text = reason?.stack || reason?.message || String(reason);
+    console.error("[recorder] unhandledRejection:", text);
+    await cleanupResources("unhandledRejection");
+  } finally {
+    process.exit(1);
+  }
+});
+
+browser = await puppeteer.launch({
   headless: false,
   executablePath,
+  userDataDir: chromeUserDataDir,
   defaultViewport: null,
   ignoreDefaultArgs: ["--mute-audio"],
   env: {
@@ -132,7 +254,7 @@ const browser = await puppeteer.launch({
   ],
 });
 
-const page = await browser.newPage();
+page = await browser.newPage();
 
 await page.setUserAgent(
   "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) " +
@@ -401,16 +523,7 @@ async function stopRecording(stopReason = "signal") {
     autoStopTimer = null;
   }
 
-  try {
-    await browser.close();
-  } catch {
-    // ignore
-  }
-  try {
-    xvfb.stop();
-  } catch {
-    // ignore
-  }
+  await cleanupResources(`stopRecording:${stopReason}`);
 
   console.error(`[recorder] Запись сохранена: ${outputPath}`);
 
@@ -502,10 +615,3 @@ function startMeetingEndPolling() {
 }
 
 startMeetingEndPolling();
-
-process.on("SIGINT", () => {
-  stopRecording("signal");
-});
-process.on("SIGTERM", () => {
-  stopRecording("signal");
-});
