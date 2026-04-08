@@ -568,58 +568,183 @@ if (lobbyAvatarPath) {
   }
 }
 
+const LOBBY_AVATAR_SELECTOR_HINTS = [
+  '[data-testid*="avatar" i]',
+  "button[aria-label*='фото' i]",
+  "button[aria-label*='Фото' i]",
+  "button[aria-label*='аватар' i]",
+  "button[aria-label*='Аватар' i]",
+  "[data-testid*='userpic' i]",
+  "[data-testid*='Userpic' i]",
+  'img[alt*="аватар" i]',
+  'img[alt*="Аватар" i]',
+];
+
+function listActiveFramesForLobbyScan() {
+  return page.frames();
+}
+
+async function tryUploadFileToEveryInputInAllFrames(pathForChromium) {
+  const frames = listActiveFramesForLobbyScan();
+  for (const frame of frames) {
+    let frameUrl = "";
+    try {
+      frameUrl = frame.url();
+    } catch {
+      frameUrl = "(url недоступен)";
+    }
+    let handles = [];
+    try {
+      handles = await frame.$$('input[type="file"]');
+    } catch (frameErr) {
+      console.error(
+        `[recorder] фрейм ${frameUrl}: не удалось искать input file — ${frameErr?.message || String(frameErr)}`,
+      );
+      continue;
+    }
+    for (const inputHandle of handles) {
+      try {
+        await inputHandle.uploadFile(pathForChromium);
+        await new Promise((r) => setTimeout(r, 800));
+        return { ok: true, frameUrl };
+      } catch (uploadErr) {
+        console.error(
+          `[recorder] uploadFile (${frameUrl}): ${uploadErr?.message || String(uploadErr)} (путь: ${pathForChromium})`,
+        );
+      }
+    }
+  }
+  return { ok: false };
+}
+
+async function frameHasAvatarHintElement(frame) {
+  try {
+    return await frame.evaluate((hints) => {
+      for (const selector of hints) {
+        if (document.querySelector(selector)) {
+          return true;
+        }
+      }
+      return false;
+    }, LOBBY_AVATAR_SELECTOR_HINTS);
+  } catch {
+    return false;
+  }
+}
+
+async function clickFirstAvatarHintInFrame(frame) {
+  return frame.evaluate((hints) => {
+    for (const selector of hints) {
+      const element = document.querySelector(selector);
+      if (element && typeof element.click === "function") {
+        element.click();
+        return selector;
+      }
+    }
+    return null;
+  }, LOBBY_AVATAR_SELECTOR_HINTS);
+}
+
+async function tryFileChooserAcceptAfterAvatarClickInFrames(pathForChromium, fileChooserTimeoutMs) {
+  const frames = listActiveFramesForLobbyScan();
+  const timeoutMs = Math.max(2000, fileChooserTimeoutMs || 5000);
+
+  for (const frame of frames) {
+    const hasHint = await frameHasAvatarHintElement(frame);
+    if (!hasHint) {
+      continue;
+    }
+
+    let frameUrl = "";
+    try {
+      frameUrl = frame.url();
+    } catch {
+      frameUrl = "(url недоступен)";
+    }
+
+    try {
+      const [fileChooser, selectorUsed] = await Promise.all([
+        page.waitForFileChooser({ timeout: timeoutMs }),
+        clickFirstAvatarHintInFrame(frame),
+      ]);
+      if (!selectorUsed) {
+        continue;
+      }
+      await fileChooser.accept([pathForChromium]);
+      await new Promise((r) => setTimeout(r, 700));
+      return { ok: true, frameUrl, method: "file_chooser", selector: selectorUsed };
+    } catch (chooserErr) {
+      console.error(
+        `[recorder] waitForFileChooser (${frameUrl}): ${chooserErr?.message || String(chooserErr)}`,
+      );
+    }
+  }
+
+  return { ok: false };
+}
+
 async function tryApplyLobbyAvatar(absoluteImagePath) {
   if (!absoluteImagePath || !existsSync(absoluteImagePath)) {
     return { applied: false, reason: "file_missing" };
   }
 
   const pathForChromium = resolve(absoluteImagePath);
+  const fileChooserMs = parseInt(process.env.TELEMOST_LOBBY_FILE_CHOOSER_MS || "5000", 10);
 
-  const uploadToEveryFileInput = async () => {
-    const handles = await page.$$('input[type="file"]');
-    for (const inputHandle of handles) {
+  try {
+    let uploadResult = await tryUploadFileToEveryInputInAllFrames(pathForChromium);
+    if (uploadResult.ok) {
+      await new Promise((r) => setTimeout(r, 700));
+      return {
+        applied: true,
+        method: "file_input_all_frames",
+        frameUrl: uploadResult.frameUrl,
+      };
+    }
+
+    const chooserResult = await tryFileChooserAcceptAfterAvatarClickInFrames(
+      pathForChromium,
+      fileChooserMs,
+    );
+    if (chooserResult.ok) {
+      return {
+        applied: true,
+        method: chooserResult.method,
+        frameUrl: chooserResult.frameUrl,
+        selector: chooserResult.selector,
+      };
+    }
+
+    for (const frame of listActiveFramesForLobbyScan()) {
+      let frameUrl = "";
       try {
-        await inputHandle.uploadFile(pathForChromium);
-        await new Promise((r) => setTimeout(r, 800));
-        return true;
-      } catch (uploadErr) {
+        frameUrl = frame.url();
+      } catch {
+        frameUrl = "(url недоступен)";
+      }
+      try {
+        const selectorUsed = await clickFirstAvatarHintInFrame(frame);
+        if (selectorUsed) {
+          console.error(
+            `[recorder] Лобби: клик по аватару (${selectorUsed}) во фрейме ${frameUrl}`,
+          );
+        }
+      } catch (clickErr) {
         console.error(
-          `[recorder] uploadFile попытка: ${uploadErr?.message || String(uploadErr)} (путь: ${pathForChromium})`,
+          `[recorder] клик аватар-hint (${frameUrl}): ${clickErr?.message || String(clickErr)}`,
         );
       }
     }
-    return false;
-  };
-
-  try {
-    if (await uploadToEveryFileInput()) {
-      await new Promise((r) => setTimeout(r, 700));
-      return { applied: true, method: "file_input" };
-    }
-
-    await page.evaluate(() => {
-      const selectorHints = [
-        '[data-testid*="avatar" i]',
-        "button[aria-label*='фото' i]",
-        "button[aria-label*='Фото' i]",
-        "button[aria-label*='аватар' i]",
-        "button[aria-label*='Аватар' i]",
-        "[data-testid*='userpic' i]",
-        "[data-testid*='Userpic' i]",
-      ];
-      for (const sel of selectorHints) {
-        const el = document.querySelector(sel);
-        if (el && typeof el.click === "function") {
-          el.click();
-          return;
-        }
-      }
-    });
     await new Promise((r) => setTimeout(r, 600));
 
-    if (await uploadToEveryFileInput()) {
+    uploadResult = await tryUploadFileToEveryInputInAllFrames(pathForChromium);
+    if (uploadResult.ok) {
       await new Promise((r) => setTimeout(r, 700));
-      return { applied: true, method: "after_avatar_click" };
+      return {
+        applied: true,
+        method: "after_avatar_click_all_frames",
+        frameUrl: uploadResult.frameUrl,
+      };
     }
   } catch (err) {
     console.error(`[recorder] Ошибка установки аватара: ${err.message}`);
