@@ -19,6 +19,7 @@
  *   Финализация: удаление state, опционально POST TELEMOST_FINISH_WEBHOOK_URL.
  */
 
+import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import puppeteer from "puppeteer";
 import {
   writeFileSync,
@@ -117,6 +118,62 @@ function startXvfb() {
 
 await startXvfb();
 console.error(`[recorder] Xvfb display: ${xvfb._display}`);
+
+function buildMinioEndpointUrlForS3Client() {
+  const raw = process.env.MINIO_ENDPOINT?.trim();
+  if (!raw) {
+    return null;
+  }
+  if (raw.startsWith("http://") || raw.startsWith("https://")) {
+    return raw.replace(/\/$/, "");
+  }
+  const useSsl = (process.env.MINIO_USE_SSL || "true").toLowerCase() === "true";
+  const scheme = useSsl ? "https" : "http";
+  return `${scheme}://${raw.replace(/\/$/, "")}`;
+}
+
+async function syncLobbyAvatarFromMinioToDefaultFile() {
+  const endpointUrl = buildMinioEndpointUrlForS3Client();
+  const accessKeyId = process.env.MINIO_ACCESS_KEY?.trim();
+  const secretAccessKey = process.env.MINIO_SECRET_KEY?.trim();
+  const bucket = process.env.MINIO_BUCKET_MEDIA?.trim();
+  const objectKey = (process.env.MINIO_AVATAR_OBJECT_KEY || "avatar.jpg").trim();
+
+  if (!endpointUrl || !accessKeyId || !secretAccessKey || !bucket) {
+    return;
+  }
+
+  const destinationPath = join(recorderScriptDir, ".telemost_bot_avatar.jpg");
+
+  try {
+    const s3Client = new S3Client({
+      region: "us-east-1",
+      endpoint: endpointUrl,
+      credentials: { accessKeyId, secretAccessKey },
+      forcePathStyle: true,
+    });
+
+    const getResponse = await s3Client.send(
+      new GetObjectCommand({ Bucket: bucket, Key: objectKey }),
+    );
+
+    if (!getResponse.Body) {
+      console.error("[recorder] MinIO GetObject: пустое тело для аватара");
+      return;
+    }
+
+    const bytes = await getResponse.Body.transformToByteArray();
+    writeFileSync(destinationPath, Buffer.from(bytes));
+    console.error(
+      `[recorder] Аватар лобби: скачан из MinIO ${bucket}/${objectKey} → ${destinationPath}`,
+    );
+  } catch (syncError) {
+    const message = syncError?.message || String(syncError);
+    console.error(
+      `[recorder] MinIO: не удалось скачать аватар (${bucket}/${objectKey}): ${message}`,
+    );
+  }
+}
 
 function resolveLobbyAvatarAbsolutePath() {
   const configuredPath = process.env.BOT_LOBBY_AVATAR_PATH;
@@ -365,6 +422,8 @@ await page.evaluateOnNewDocument(() => {
   const origAddEventListener = originalRTCPeerConnection.prototype.addEventListener;
   // Already handled in constructor wrapper above
 });
+
+await syncLobbyAvatarFromMinioToDefaultFile();
 
 // ── Navigate and join conference ─────────────────────────────────────────────
 

@@ -580,85 +580,25 @@
     },
     {
       "parameters": {
-        "jsCode": "const chatId = $('Build Telemost Photo Command').first().json.chat_id;\nconst item = $input.first();\nconst bin = item.binary?.data;\nif (!bin?.data) {\n  return [\n    {\n      json: {\n        chat_id: chatId,\n        error:\n          'Не удалось скачать файл из Telegram (проверьте credential и file_id).',\n      },\n    },\n  ];\n}\nconst b64 = String(bin.data);\nconst outPath = '/opt/telemost-recorder/.telemost_bot_avatar.jpg';\nconst jsonLine = JSON.stringify({ ok: true, avatar_path: outPath });\nconst escDq = (s) => String(s).replace(/\\\\/g, '\\\\\\\\').replace(/\"/g, '\\\\\"').replace(/\\$/g, '\\\\$').replace(/`/g, '\\\\`');\nconst command =\n  'printf \"%s\" \"' +\n  escDq(b64) +\n  '\" | base64 -d > \"' +\n  escDq(outPath) +\n  '\" && printf \"%s\\\\n\" \"' +\n  escDq(jsonLine) +\n  '\"';\nreturn [{ json: { chat_id: chatId, command } }];"
+        "operation": "upload",
+        "bucketName": "={{ $env.MINIO_BUCKET_MEDIA || 'telemost' }}",
+        "fileName": "avatar.jpg",
+        "additionalFields": {}
       },
-      "name": "Prepare Avatar SSH Command",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [1020, 1000]
-    },
-    {
-      "parameters": {
-        "conditions": {
-          "string": [
-            {
-              "value1": "={{ $json.error }}",
-              "operation": "isNotEmpty"
-            }
-          ]
-        }
-      },
-      "name": "Avatar Prepare Failed?",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 1,
-      "position": [1100, 1000]
-    },
-    {
-      "parameters": {
-        "command": "={{ $json.command }}"
-      },
-      "name": "SSH Save Telemost Avatar",
-      "type": "n8n-nodes-base.ssh",
-      "typeVersion": 1,
-      "position": [1280, 1000]
-    },
-    {
-      "parameters": {
-        "jsCode": "const raw = $input.first().json.stdout || '';\nconst err = $input.first().json.stderr || '';\nconst chatId = $('Build Telemost Photo Command').first().json.chat_id;\nif (!raw.trim()) {\n  return [{ json: { chat_id: chatId, error: err.trim() || 'SSH: пустой ответ при записи аватара' } }];\n}\ntry {\n  const line = raw.trim().split(/\\r?\\n/).filter(Boolean).pop() || raw.trim();\n  const parsed = JSON.parse(line);\n  if (parsed.error) {\n    return [{ json: { chat_id: chatId, error: String(parsed.error) } }];\n  }\n  return [{ json: { chat_id: chatId, ...parsed } }];\n} catch (e) {\n  return [{ json: { chat_id: chatId, error: 'Запись аватара: ' + (err.trim() || raw.substring(0, 500)) } }];\n}"
-      },
-      "name": "Parse Telemost Avatar Result",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [1340, 1000]
-    },
-    {
-      "parameters": {
-        "conditions": {
-          "string": [
-            {
-              "value1": "={{ $json.error }}",
-              "operation": "isNotEmpty"
-            }
-          ]
-        }
-      },
-      "name": "Telemost Avatar Script Failed?",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 1,
-      "position": [1500, 1000]
-    },
-    {
-      "parameters": {
-        "chatId": "={{ $json.chat_id }}",
-        "text": "=❌ Не удалось сохранить аватар:\n\n`{{ $json.error }}`",
-        "additionalFields": {
-          "parse_mode": "Markdown"
-        }
-      },
-      "name": "Send Telemost Avatar SSH Error",
-      "type": "n8n-nodes-base.telegram",
+      "name": "Upload Avatar to MinIO",
+      "type": "n8n-nodes-base.s3",
       "typeVersion": 1,
       "credentials": {
-        "telegramApi": {
-          "name": "TeleTranscript"
+        "s3": {
+          "name": "S3 account"
         }
       },
-      "position": [1500, 900]
+      "position": [1040, 1000]
     },
     {
       "parameters": {
-        "chatId": "={{ $json.chat_id }}",
-        "text": "=✅ Аватар для лобби Телемоста сохранён на сервере.\n\nПри следующем входе бот попытается подставить фото в экран «имя + подключиться» (если Телемост позволяет загрузку). Файл: `{{ $json.avatar_path }}`",
+        "chatId": "={{ $('Telegram Trigger').first().json.message.chat.id }}",
+        "text": "=✅ Аватар для лобби сохранён в MinIO (`avatar.jpg` в бакете). Рекордер подтянет его при следующем /meeting\\_start или /meeting\\_join.",
         "additionalFields": {
           "parse_mode": "Markdown"
         }
@@ -671,7 +611,7 @@
           "name": "TeleTranscript"
         }
       },
-      "position": [1500, 1100]
+      "position": [1220, 1000]
     },
     {
       "parameters": {
@@ -737,28 +677,10 @@
       ]
     },
     "Telegram Download Avatar": {
-      "main": [[{ "node": "Prepare Avatar SSH Command", "type": "main", "index": 0 }]]
+      "main": [[{ "node": "Upload Avatar to MinIO", "type": "main", "index": 0 }]]
     },
-    "Prepare Avatar SSH Command": {
-      "main": [[{ "node": "Avatar Prepare Failed?", "type": "main", "index": 0 }]]
-    },
-    "Avatar Prepare Failed?": {
-      "main": [
-        [{ "node": "Send Telemost Avatar SSH Error", "type": "main", "index": 0 }],
-        [{ "node": "SSH Save Telemost Avatar", "type": "main", "index": 0 }]
-      ]
-    },
-    "SSH Save Telemost Avatar": {
-      "main": [[{ "node": "Parse Telemost Avatar Result", "type": "main", "index": 0 }]]
-    },
-    "Parse Telemost Avatar Result": {
-      "main": [[{ "node": "Telemost Avatar Script Failed?", "type": "main", "index": 0 }]]
-    },
-    "Telemost Avatar Script Failed?": {
-      "main": [
-        [{ "node": "Send Telemost Avatar SSH Error", "type": "main", "index": 0 }],
-        [{ "node": "Send Telemost Avatar OK", "type": "main", "index": 0 }]
-      ]
+    "Upload Avatar to MinIO": {
+      "main": [[{ "node": "Send Telemost Avatar OK", "type": "main", "index": 0 }]]
     },
     "Build Join Command": {
       "main": [[{ "node": "Join Meeting", "type": "main", "index": 0 }]]

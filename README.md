@@ -119,18 +119,18 @@ chmod 600 /opt/telemost-recorder/.env.telemost
 Это **не** настройки профиля Telegram-бота в мессенджере, а имя и фото участника, который заходит в конференцию через Puppeteer (`recorder.js`).
 
 - **Файл на сервере:** рядом со скриптами создаётся/обновляется `telemost_recorder_profile.json` (ключ `display_name`). Его читают `start_meeting.sh` и `join_meeting.sh` и экспортируют `BOT_DISPLAY_NAME` перед запуском `recorder.js`.
-- **Аватар:** в n8n файл приходит из Telegram API в бинарном виде, затем по SSH записывается в `.telemost_bot_avatar.jpg`. Очень большие изображения могут упереться в лимит длины командной строки на сервере — используйте обычное фото профиля. `recorder.js` подхватывает файл автоматически (или путь из `BOT_LOBBY_AVATAR_PATH` в `.env.telemost`).
-- **Токен бота:** для `/telemost_photo` в workflow файл скачивается узлом **Telegram** (resource *File*, get + download) с тем же credential, что и остальные Telegram-узлы (**TeleTranscript**). Запись на диск — SSH-команда `printf … | base64 -d` на сервере; **дублировать токен в `.env.telemost` не нужно**. Скрипт `save_avatar_from_telegram.sh` оставлен для ручного запуска на сервере при необходимости.
+- **Аватар:** в n8n файл скачивается узлом **Telegram** (resource *File*, get + **download**), затем узлом **S3** загружается в MinIO под стабильным ключом (по умолчанию `avatar.jpg` в бакете `MINIO_BUCKET_MEDIA`). Перед заходом в лобби `recorder.js` скачивает этот объект в `.telemost_bot_avatar.jpg` (те же переменные `MINIO_*`, что и у `transcribe.py`, плюс опционально `MINIO_AVATAR_OBJECT_KEY`). Либо задаётся явный путь `BOT_LOBBY_AVATAR_PATH` в `.env.telemost`.
+- **Credentials:** для Telegram — **TeleTranscript**; для MinIO в n8n — S3-compatible credential с тем же endpoint и ключами, что и на сервере. Отдельный `TELEGRAM_BOT_TOKEN` в env n8n для этой ветки не нужен. Скрипт `save_avatar_from_telegram.sh` оставлен для ручного запуска на сервере при необходимости.
 
 Команды в чате с ботом:
 
 - `/telemost_name EN Meeting recorder` — сохранить отображаемое имя в лобби для следующих записей.
 - `/telemost_name --reset` — убрать имя из профиля и снова использовать `BOT_DISPLAY_NAME` из `.env.telemost`.
-- Отправьте **изображение** с подписью **`/telemost_photo`** — файл скачается на сервер как аватар лобби.
+- Отправьте **изображение** с подписью **`/telemost_photo`** — файл попадёт в MinIO; рекордер подхватит его при следующем запуске.
 
 Загрузка фото в UI Телемоста зависит от вёрстки: в `recorder.js` перебираются скрытые `input[type="file"]` и типичные кнопки/тестиды. Если релиз Телемоста изменил разметку, по логу строка `[recorder] Аватар лобби:` подскажет, сработало ли.
 
-**Важно:** `/telemost_name` и `/telemost_photo` выполняют SSH-команды на сервере для всех пользователей бота одинаково. Если бот не только для личного пользования, имеет смысл ограничить, кто может с ним переписываться (или вернуть проверку по `chat.id` в узлах **Build Telemost Name/Photo** в n8n).
+**Важно:** `/telemost_name` выполняет SSH на сервере (профиль имени). `/telemost_photo` обрабатывается только в n8n (Telegram → MinIO). Для всех пользователей бота имя и аватар общие — если бот не только для личного пользования, имеет смысл ограничить доступ (или вернуть проверку по `chat.id` в узлах **Build Telemost Name/Photo** в n8n).
 
 #### Саммари после транскрипта (OpenRouter)
 
@@ -184,7 +184,7 @@ curl -X POST "https://ВАШ-N8N/webhook/ВАШ-ID/telemost-recall-transcript" -
 /meeting_stop                      — остановить запись и запустить транскрибацию
 /telemost_name Имя в комнате      — имя бота в лобби Телемоста
 /telemost_name --reset             — сброс имени к BOT_DISPLAY_NAME из .env
-/telemost_photo                    — подпись к фото: аватар в лобби (нужен TELEGRAM_BOT_TOKEN на сервере)
+/telemost_photo                    — подпись к фото: аватар в MinIO → рекордер подхватывает при записи
 ```
 
 Опционально после ссылки в `/meeting_join` можно указать **название** для отчёта (текст после URL). Если не указать — подставится заголовок вида «Встреча по ссылке» с датой.
