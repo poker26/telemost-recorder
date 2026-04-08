@@ -112,6 +112,8 @@ chmod 600 /opt/telemost-recorder/.env.telemost
 Импортировать `n8n_workflow.json` через **Settings → Import Workflow**.
 Настроить credentials: Telegram Bot + Postgres (Supabase) + SSH.
 
+В workflow двухуровневая развилка: узел **Route Command** (не больше четырёх выходов в Switch v1) ведёт `/meeting_*` отдельно, а остальной текст — в **Route Telemost Command** (`/telemost_name`, `/telemost_photo` или неизвестная команда).
+
 #### Имя и аватар бота **в Телемосте** (лобби перед «Подключиться»)
 
 Это **не** настройки профиля Telegram-бота в мессенджере, а имя и фото участника, который заходит в конференцию через Puppeteer (`recorder.js`).
