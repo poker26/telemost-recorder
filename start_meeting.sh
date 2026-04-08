@@ -3,6 +3,7 @@
 # Использование: ./start_meeting.sh "Название встречи" [telegram_chat_id]
 # Второй аргумент (числовой id чата) сохраняется в state для webhook при автофинишe в Телемосте.
 # Env: TELEMOST_TOKEN, RECORDINGS_DIR (опционально)
+# В теле API: waiting_room_level=PUBLIC — без комнаты ожидания; гости сразу во встрече (не ADMINS).
 
 set -euo pipefail
 
@@ -50,7 +51,7 @@ RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
   -H "Authorization: OAuth $TELEMOST_TOKEN" \
   -H "Content-Type: application/json" \
   -d "{
-    \"waiting_room_level\": \"ADMINS\",
+    \"waiting_room_level\": \"PUBLIC\",
     \"live_stream\": {
       \"access_level\": \"PUBLIC\",
       \"title\": \"$TITLE\"
