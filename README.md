@@ -119,8 +119,8 @@ chmod 600 /opt/telemost-recorder/.env.telemost
 Это **не** настройки профиля Telegram-бота в мессенджере, а имя и фото участника, который заходит в конференцию через Puppeteer (`recorder.js`).
 
 - **Файл на сервере:** рядом со скриптами создаётся/обновляется `telemost_recorder_profile.json` (ключ `display_name`). Его читают `start_meeting.sh` и `join_meeting.sh` и экспортируют `BOT_DISPLAY_NAME` перед запуском `recorder.js`.
-- **Аватар:** скрипт `save_avatar_from_telegram.sh` кладёт изображение в `.telemost_bot_avatar.jpg`. `recorder.js` подхватывает его автоматически (или путь из `BOT_LOBBY_AVATAR_PATH` в `.env.telemost`). На сервере у скриптов должны быть права на выполнение (см. `chmod` в п. «Установка»); иначе n8n по SSH вернёт `Permission denied`.
-- **Секрет на сервере:** в `.env.telemost` добавьте **`TELEGRAM_BOT_TOKEN`** (тот же токен, что у бота в n8n), иначе загрузка фото с Telegram на диск сервера невозможна.
+- **Аватар:** в n8n файл приходит из Telegram API в бинарном виде, затем по SSH записывается в `.telemost_bot_avatar.jpg`. Очень большие изображения могут упереться в лимит длины командной строки на сервере — используйте обычное фото профиля. `recorder.js` подхватывает файл автоматически (или путь из `BOT_LOBBY_AVATAR_PATH` в `.env.telemost`).
+- **Токен бота:** для `/telemost_photo` в workflow файл скачивается узлом **Telegram** (resource *File*, get + download) с тем же credential, что и остальные Telegram-узлы (**TeleTranscript**). Запись на диск — SSH-команда `printf … | base64 -d` на сервере; **дублировать токен в `.env.telemost` не нужно**. Скрипт `save_avatar_from_telegram.sh` оставлен для ручного запуска на сервере при необходимости.
 
 Команды в чате с ботом:
 

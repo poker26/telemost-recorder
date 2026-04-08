@@ -519,7 +519,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const trigger = $('Telegram Trigger').first().json;\nconst msg = trigger.message || {};\nconst chatId = String(msg.chat?.id ?? '');\nconst photos = msg.photo;\nif (!photos || photos.length === 0) {\n  return [\n    {\n      json: {\n        chat_id: chatId,\n        error:\n          'Пришлите фото с подписью /telemost_photo (картинка в том же сообщении).',\n      },\n    },\n  ];\n}\nconst best = photos[photos.length - 1];\nconst fileId = best && best.file_id;\nif (!fileId) {\n  return [{ json: { chat_id: chatId, error: 'Не удалось получить file_id фото.' } }];\n}\nconst esc = (s) =>\n  String(s)\n    .replace(/\\\\/g, '\\\\\\\\')\n    .replace(/\"/g, '\\\\\"')\n    .replace(/\\$/g, '\\\\$')\n    .replace(/`/g, '\\\\`');\nconst command = '/opt/telemost-recorder/save_avatar_from_telegram.sh \"' + esc(fileId) + '\"';\nreturn [{ json: { chat_id: chatId, command } }];"
+        "jsCode": "const trigger = $('Telegram Trigger').first().json;\nconst msg = trigger.message || {};\nconst chatId = String(msg.chat?.id ?? '');\nconst photos = msg.photo;\nif (!photos || photos.length === 0) {\n  return [\n    {\n      json: {\n        chat_id: chatId,\n        error:\n          'Пришлите фото с подписью /telemost_photo (картинка в том же сообщении).',\n      },\n    },\n  ];\n}\nconst best = photos[photos.length - 1];\nconst fileId = best && best.file_id;\nif (!fileId) {\n  return [{ json: { chat_id: chatId, error: 'Не удалось получить file_id фото.' } }];\n}\nreturn [{ json: { chat_id: chatId, file_id: fileId } }];"
       },
       "name": "Build Telemost Photo Command",
       "type": "n8n-nodes-base.code",
@@ -562,21 +562,64 @@
     },
     {
       "parameters": {
+        "resource": "file",
+        "operation": "get",
+        "fileId": "={{ $json.file_id }}",
+        "download": true,
+        "additionalFields": {}
+      },
+      "name": "Telegram Download Avatar",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "credentials": {
+        "telegramApi": {
+          "name": "TeleTranscript"
+        }
+      },
+      "position": [880, 1000]
+    },
+    {
+      "parameters": {
+        "jsCode": "const chatId = $('Build Telemost Photo Command').first().json.chat_id;\nconst item = $input.first();\nconst bin = item.binary?.data;\nif (!bin?.data) {\n  return [\n    {\n      json: {\n        chat_id: chatId,\n        error:\n          'Не удалось скачать файл из Telegram (проверьте credential и file_id).',\n      },\n    },\n  ];\n}\nconst b64 = String(bin.data);\nconst outPath = '/opt/telemost-recorder/.telemost_bot_avatar.jpg';\nconst jsonLine = JSON.stringify({ ok: true, avatar_path: outPath });\nconst escDq = (s) => String(s).replace(/\\\\/g, '\\\\\\\\').replace(/\"/g, '\\\\\"').replace(/\\$/g, '\\\\$').replace(/`/g, '\\\\`');\nconst command =\n  'printf \"%s\" \"' +\n  escDq(b64) +\n  '\" | base64 -d > \"' +\n  escDq(outPath) +\n  '\" && printf \"%s\\\\n\" \"' +\n  escDq(jsonLine) +\n  '\"';\nreturn [{ json: { chat_id: chatId, command } }];"
+      },
+      "name": "Prepare Avatar SSH Command",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1020, 1000]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.error }}",
+              "operation": "isNotEmpty"
+            }
+          ]
+        }
+      },
+      "name": "Avatar Prepare Failed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1100, 1000]
+    },
+    {
+      "parameters": {
         "command": "={{ $json.command }}"
       },
       "name": "SSH Save Telemost Avatar",
       "type": "n8n-nodes-base.ssh",
       "typeVersion": 1,
-      "position": [960, 1000]
+      "position": [1280, 1000]
     },
     {
       "parameters": {
-        "jsCode": "const raw = $input.first().json.stdout || '';\nconst err = $input.first().json.stderr || '';\nconst chatId = $('Build Telemost Photo Command').first().json.chat_id;\nif (!raw.trim()) {\n  return [{ json: { chat_id: chatId, error: err.trim() || 'save_avatar_from_telegram.sh вернул пустой ответ' } }];\n}\ntry {\n  const parsed = JSON.parse(raw);\n  if (parsed.error) {\n    return [{ json: { chat_id: chatId, error: String(parsed.error) } }];\n  }\n  return [{ json: { chat_id: chatId, ...parsed } }];\n} catch (e) {\n  return [{ json: { chat_id: chatId, error: 'save_avatar_from_telegram.sh: ' + (err.trim() || raw.substring(0, 500)) } }];\n}"
+        "jsCode": "const raw = $input.first().json.stdout || '';\nconst err = $input.first().json.stderr || '';\nconst chatId = $('Build Telemost Photo Command').first().json.chat_id;\nif (!raw.trim()) {\n  return [{ json: { chat_id: chatId, error: err.trim() || 'SSH: пустой ответ при записи аватара' } }];\n}\ntry {\n  const line = raw.trim().split(/\\r?\\n/).filter(Boolean).pop() || raw.trim();\n  const parsed = JSON.parse(line);\n  if (parsed.error) {\n    return [{ json: { chat_id: chatId, error: String(parsed.error) } }];\n  }\n  return [{ json: { chat_id: chatId, ...parsed } }];\n} catch (e) {\n  return [{ json: { chat_id: chatId, error: 'Запись аватара: ' + (err.trim() || raw.substring(0, 500)) } }];\n}"
       },
       "name": "Parse Telemost Avatar Result",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1160, 1000]
+      "position": [1340, 1000]
     },
     {
       "parameters": {
@@ -592,7 +635,7 @@
       "name": "Telemost Avatar Script Failed?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 1,
-      "position": [1320, 1000]
+      "position": [1500, 1000]
     },
     {
       "parameters": {
@@ -690,6 +733,18 @@
     "Telemost Photo Has Error?": {
       "main": [
         [{ "node": "Send Telemost Photo Validation Error", "type": "main", "index": 0 }],
+        [{ "node": "Telegram Download Avatar", "type": "main", "index": 0 }]
+      ]
+    },
+    "Telegram Download Avatar": {
+      "main": [[{ "node": "Prepare Avatar SSH Command", "type": "main", "index": 0 }]]
+    },
+    "Prepare Avatar SSH Command": {
+      "main": [[{ "node": "Avatar Prepare Failed?", "type": "main", "index": 0 }]]
+    },
+    "Avatar Prepare Failed?": {
+      "main": [
+        [{ "node": "Send Telemost Avatar SSH Error", "type": "main", "index": 0 }],
         [{ "node": "SSH Save Telemost Avatar", "type": "main", "index": 0 }]
       ]
     },
