@@ -31,10 +31,13 @@ import {
   mkdtempSync,
   rmSync,
 } from "fs";
-import { resolve, join } from "path";
+import { resolve, join, dirname } from "path";
+import { fileURLToPath } from "url";
 import { homedir, tmpdir } from "os";
 import { execSync } from "child_process";
 import Xvfb from "xvfb";
+
+const recorderScriptDir = dirname(fileURLToPath(import.meta.url));
 
 const STATE_FILE = "/tmp/telemost_meeting.json";
 
@@ -114,6 +117,24 @@ function startXvfb() {
 
 await startXvfb();
 console.error(`[recorder] Xvfb display: ${xvfb._display}`);
+
+function resolveLobbyAvatarAbsolutePath() {
+  const configuredPath = process.env.BOT_LOBBY_AVATAR_PATH;
+  if (configuredPath) {
+    const absoluteConfigured = resolve(configuredPath);
+    if (existsSync(absoluteConfigured)) {
+      return absoluteConfigured;
+    }
+    console.error(
+      `[recorder] BOT_LOBBY_AVATAR_PATH задан, файл не найден: ${absoluteConfigured}`,
+    );
+  }
+  const defaultPath = join(recorderScriptDir, ".telemost_bot_avatar.jpg");
+  if (existsSync(defaultPath)) {
+    return defaultPath;
+  }
+  return null;
+}
 
 // ── Write empty file so stop_meeting.sh sees it ──────────────────────────────
 
@@ -359,6 +380,73 @@ if (nameInput) {
   await nameInput.click({ clickCount: 3 });
   await nameInput.type(BOT_NAME);
   console.error(`[recorder] Имя бота: ${BOT_NAME}`);
+}
+
+const lobbyAvatarPath = resolveLobbyAvatarAbsolutePath();
+if (lobbyAvatarPath) {
+  console.error(`[recorder] Аватар лобби (файл): ${lobbyAvatarPath}`);
+}
+
+async function tryApplyLobbyAvatar(absoluteImagePath) {
+  if (!absoluteImagePath || !existsSync(absoluteImagePath)) {
+    return { applied: false, reason: "file_missing" };
+  }
+
+  const uploadToEveryFileInput = async () => {
+    const handles = await page.$$('input[type="file"]');
+    for (const inputHandle of handles) {
+      try {
+        await inputHandle.uploadFile(absoluteImagePath);
+        await new Promise((r) => setTimeout(r, 800));
+        return true;
+      } catch {
+        // пробуем следующий input
+      }
+    }
+    return false;
+  };
+
+  try {
+    if (await uploadToEveryFileInput()) {
+      await new Promise((r) => setTimeout(r, 700));
+      return { applied: true, method: "file_input" };
+    }
+
+    await page.evaluate(() => {
+      const selectorHints = [
+        '[data-testid*="avatar" i]',
+        "button[aria-label*='фото' i]",
+        "button[aria-label*='Фото' i]",
+        "button[aria-label*='аватар' i]",
+        "button[aria-label*='Аватар' i]",
+        "[data-testid*='userpic' i]",
+        "[data-testid*='Userpic' i]",
+      ];
+      for (const sel of selectorHints) {
+        const el = document.querySelector(sel);
+        if (el && typeof el.click === "function") {
+          el.click();
+          return;
+        }
+      }
+    });
+    await new Promise((r) => setTimeout(r, 600));
+
+    if (await uploadToEveryFileInput()) {
+      await new Promise((r) => setTimeout(r, 700));
+      return { applied: true, method: "after_avatar_click" };
+    }
+  } catch (err) {
+    console.error(`[recorder] Ошибка установки аватара: ${err.message}`);
+    return { applied: false, reason: err.message };
+  }
+
+  return { applied: false, reason: "no_file_control" };
+}
+
+if (lobbyAvatarPath) {
+  const avatarResult = await tryApplyLobbyAvatar(lobbyAvatarPath);
+  console.error(`[recorder] Аватар лобби: ${JSON.stringify(avatarResult)}`);
 }
 
 async function muteMicAndCamera() {

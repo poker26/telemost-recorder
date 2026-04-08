@@ -14,7 +14,7 @@
     {
       "parameters": {
         "dataType": "string",
-        "value1": "={{ $json.message.text.split(' ')[0] }}",
+        "value1": "={{ (($json.message.text || $json.message.caption || '').trim().split(/\\s+/)[0] || '') }}",
         "rules": {
           "rules": [
             {
@@ -28,10 +28,18 @@
             {
               "value2": "/meeting_join",
               "output": 2
+            },
+            {
+              "value2": "/telemost_name",
+              "output": 3
+            },
+            {
+              "value2": "/telemost_photo",
+              "output": 4
             }
           ]
         },
-        "fallbackOutput": 3
+        "fallbackOutput": 5
       },
       "name": "Route Command",
       "type": "n8n-nodes-base.switch",
@@ -377,8 +385,204 @@
 
     {
       "parameters": {
+        "jsCode": "const trigger = $('Telegram Trigger').first().json;\nconst msg = trigger.message || {};\nconst chatId = String(msg.chat?.id ?? '');\nconst adminList = String($env.TELEGRAM_ADMIN_CHAT_IDS || '')\n  .split(',')\n  .map((s) => s.trim())\n  .filter(Boolean);\nif (adminList.length === 0) {\n  return [\n    {\n      json: {\n        chat_id: chatId,\n        error:\n          'Переменная TELEGRAM_ADMIN_CHAT_IDS не задана в n8n (список chat id через запятую).',\n      },\n    },\n  ];\n}\nif (!adminList.includes(chatId)) {\n  return [{ json: { chat_id: chatId, error: 'Команда доступна только администраторам.' } }];\n}\nconst line = String(msg.text || msg.caption || '').replace(/^\\s*\\/telemost_name\\s*/i, '').trim();\nif (!line) {\n  return [\n    {\n      json: {\n        chat_id: chatId,\n        error:\n          'Укажите имя после команды, например: /telemost_name EN Recording bot\\nСброс к .env: /telemost_name --reset',\n      },\n    },\n  ];\n}\nconst esc = (s) =>\n  String(s)\n    .replace(/\\\\/g, '\\\\\\\\')\n    .replace(/\"/g, '\\\\\"')\n    .replace(/\\$/g, '\\\\$')\n    .replace(/`/g, '\\\\`');\nconst command = '/opt/telemost-recorder/set_recorder_display_name.sh \"' + esc(line) + '\"';\nreturn [{ json: { chat_id: chatId, command } }];"
+      },
+      "name": "Build Telemost Name Command",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [620, 680]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.error }}",
+              "operation": "isNotEmpty"
+            }
+          ]
+        }
+      },
+      "name": "Telemost Name Has Error?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [760, 680]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chat_id }}",
+        "text": "=❌ `{{ $json.error }}`",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "name": "Send Telemost Name Validation Error",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [960, 580]
+    },
+    {
+      "parameters": {
+        "command": "={{ $json.command }}"
+      },
+      "name": "SSH Set Telemost Name",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [960, 760]
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json.stdout || '';\nconst err = $input.first().json.stderr || '';\nconst chatId = $('Build Telemost Name Command').first().json.chat_id;\nif (!raw.trim()) {\n  return [{ json: { chat_id: chatId, error: err.trim() || 'set_recorder_display_name.sh вернул пустой ответ' } }];\n}\ntry {\n  const parsed = JSON.parse(raw);\n  if (parsed.error) {\n    return [{ json: { chat_id: chatId, error: String(parsed.error) } }];\n  }\n  return [{ json: { chat_id: chatId, ...parsed } }];\n} catch (e) {\n  return [{ json: { chat_id: chatId, error: 'set_recorder_display_name.sh: ' + (err.trim() || raw.substring(0, 500)) } }];\n}"
+      },
+      "name": "Parse Telemost Name Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1160, 760]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.error }}",
+              "operation": "isNotEmpty"
+            }
+          ]
+        }
+      },
+      "name": "Telemost Name Script Failed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1320, 760]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chat_id }}",
+        "text": "=❌ Не удалось сохранить имя:\n\n`{{ $json.error }}`",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "name": "Send Telemost Name SSH Error",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [1500, 660]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chat_id }}",
+        "text": "=✅ Имя в лобби Телемоста: *{{ $json.display_name || $json.message || \"готово\" }}*\n\nУчтётся при следующем /meeting\\_start или /meeting\\_join (если в профиле пусто — из BOT\\_DISPLAY\\_NAME в .env).",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "name": "Send Telemost Name OK",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [1500, 860]
+    },
+    {
+      "parameters": {
+        "jsCode": "const trigger = $('Telegram Trigger').first().json;\nconst msg = trigger.message || {};\nconst chatId = String(msg.chat?.id ?? '');\nconst adminList = String($env.TELEGRAM_ADMIN_CHAT_IDS || '')\n  .split(',')\n  .map((s) => s.trim())\n  .filter(Boolean);\nif (adminList.length === 0) {\n  return [\n    {\n      json: {\n        chat_id: chatId,\n        error:\n          'Переменная TELEGRAM_ADMIN_CHAT_IDS не задана в n8n (список chat id через запятую).',\n      },\n    },\n  ];\n}\nif (!adminList.includes(chatId)) {\n  return [{ json: { chat_id: chatId, error: 'Команда доступна только администраторам.' } }];\n}\nconst photos = msg.photo;\nif (!photos || photos.length === 0) {\n  return [\n    {\n      json: {\n        chat_id: chatId,\n        error:\n          'Пришлите фото с подписью /telemost_photo (картинка в том же сообщении).',\n      },\n    },\n  ];\n}\nconst best = photos[photos.length - 1];\nconst fileId = best && best.file_id;\nif (!fileId) {\n  return [{ json: { chat_id: chatId, error: 'Не удалось получить file_id фото.' } }];\n}\nconst esc = (s) =>\n  String(s)\n    .replace(/\\\\/g, '\\\\\\\\')\n    .replace(/\"/g, '\\\\\"')\n    .replace(/\\$/g, '\\\\$')\n    .replace(/`/g, '\\\\`');\nconst command = '/opt/telemost-recorder/save_avatar_from_telegram.sh \"' + esc(fileId) + '\"';\nreturn [{ json: { chat_id: chatId, command } }];"
+      },
+      "name": "Build Telemost Photo Command",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [620, 920]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.error }}",
+              "operation": "isNotEmpty"
+            }
+          ]
+        }
+      },
+      "name": "Telemost Photo Has Error?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [760, 920]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chat_id }}",
+        "text": "=❌ `{{ $json.error }}`",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "name": "Send Telemost Photo Validation Error",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [960, 820]
+    },
+    {
+      "parameters": {
+        "command": "={{ $json.command }}"
+      },
+      "name": "SSH Save Telemost Avatar",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [960, 1000]
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json.stdout || '';\nconst err = $input.first().json.stderr || '';\nconst chatId = $('Build Telemost Photo Command').first().json.chat_id;\nif (!raw.trim()) {\n  return [{ json: { chat_id: chatId, error: err.trim() || 'save_avatar_from_telegram.sh вернул пустой ответ' } }];\n}\ntry {\n  const parsed = JSON.parse(raw);\n  if (parsed.error) {\n    return [{ json: { chat_id: chatId, error: String(parsed.error) } }];\n  }\n  return [{ json: { chat_id: chatId, ...parsed } }];\n} catch (e) {\n  return [{ json: { chat_id: chatId, error: 'save_avatar_from_telegram.sh: ' + (err.trim() || raw.substring(0, 500)) } }];\n}"
+      },
+      "name": "Parse Telemost Avatar Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1160, 1000]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.error }}",
+              "operation": "isNotEmpty"
+            }
+          ]
+        }
+      },
+      "name": "Telemost Avatar Script Failed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1320, 1000]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chat_id }}",
+        "text": "=❌ Не удалось сохранить аватар:\n\n`{{ $json.error }}`",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "name": "Send Telemost Avatar SSH Error",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [1500, 900]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chat_id }}",
+        "text": "=✅ Аватар для лобби Телемоста сохранён на сервере.\n\nПри следующем входе бот попытается подставить фото в экран «имя + подключиться» (если Телемост позволяет загрузку). Файл: `{{ $json.avatar_path }}`",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "name": "Send Telemost Avatar OK",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [1500, 1100]
+    },
+    {
+      "parameters": {
         "chatId": "={{ $('Telegram Trigger').first().json.message.chat.id }}",
-        "text": "Неизвестная команда.\n\nДоступные команды:\n/meeting\\_start [название] — создать встречу и записать\n/meeting\\_join https://… — записать по чужой ссылке\n/meeting\\_stop — остановить запись и транскрибировать",
+        "text": "Неизвестная команда.\n\nДоступные команды:\n/meeting\\_start [название] — создать встречу и записать\n/meeting\\_join https://… — записать по чужой ссылке\n/meeting\\_stop — остановить запись и транскрибировать\n/telemost\\_name Имя — имя участника в лобби Телемоста (админы)\n/telemost\\_name --reset — сброс к BOT\\_DISPLAY\\_NAME из .env\n/telemost\\_photo — фото в том же сообщении, подпись /telemost\\_photo (админы)",
         "additionalFields": {
           "parse_mode": "Markdown"
         }
@@ -398,7 +602,51 @@
         [{ "node": "Start Meeting", "type": "main", "index": 0 }],
         [{ "node": "Stop Meeting", "type": "main", "index": 0 }],
         [{ "node": "Build Join Command", "type": "main", "index": 0 }],
+        [{ "node": "Build Telemost Name Command", "type": "main", "index": 0 }],
+        [{ "node": "Build Telemost Photo Command", "type": "main", "index": 0 }],
         [{ "node": "Unknown Command", "type": "main", "index": 0 }]
+      ]
+    },
+    "Build Telemost Name Command": {
+      "main": [[{ "node": "Telemost Name Has Error?", "type": "main", "index": 0 }]]
+    },
+    "Telemost Name Has Error?": {
+      "main": [
+        [{ "node": "Send Telemost Name Validation Error", "type": "main", "index": 0 }],
+        [{ "node": "SSH Set Telemost Name", "type": "main", "index": 0 }]
+      ]
+    },
+    "SSH Set Telemost Name": {
+      "main": [[{ "node": "Parse Telemost Name Result", "type": "main", "index": 0 }]]
+    },
+    "Parse Telemost Name Result": {
+      "main": [[{ "node": "Telemost Name Script Failed?", "type": "main", "index": 0 }]]
+    },
+    "Telemost Name Script Failed?": {
+      "main": [
+        [{ "node": "Send Telemost Name SSH Error", "type": "main", "index": 0 }],
+        [{ "node": "Send Telemost Name OK", "type": "main", "index": 0 }]
+      ]
+    },
+    "Build Telemost Photo Command": {
+      "main": [[{ "node": "Telemost Photo Has Error?", "type": "main", "index": 0 }]]
+    },
+    "Telemost Photo Has Error?": {
+      "main": [
+        [{ "node": "Send Telemost Photo Validation Error", "type": "main", "index": 0 }],
+        [{ "node": "SSH Save Telemost Avatar", "type": "main", "index": 0 }]
+      ]
+    },
+    "SSH Save Telemost Avatar": {
+      "main": [[{ "node": "Parse Telemost Avatar Result", "type": "main", "index": 0 }]]
+    },
+    "Parse Telemost Avatar Result": {
+      "main": [[{ "node": "Telemost Avatar Script Failed?", "type": "main", "index": 0 }]]
+    },
+    "Telemost Avatar Script Failed?": {
+      "main": [
+        [{ "node": "Send Telemost Avatar SSH Error", "type": "main", "index": 0 }],
+        [{ "node": "Send Telemost Avatar OK", "type": "main", "index": 0 }]
       ]
     },
     "Build Join Command": {

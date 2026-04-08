@@ -31,7 +31,9 @@ SpeechKit принимает аудио только из Yandex Object Storage 
 
 | Файл | Назначение |
 |------|-----------|
-| `start_meeting.sh` | Создать конференцию через Telemost API, запустить FFmpeg |
+| `start_meeting.sh` | Создать конференцию через Telemost API, запустить recorder |
+| `set_recorder_display_name.sh` | Сохранить имя в лобби Телемоста (`telemost_recorder_profile.json`) |
+| `save_avatar_from_telegram.sh` | Скачать фото из Telegram → `.telemost_bot_avatar.jpg` |
 | `stop_meeting.sh` | Остановить FFmpeg, вернуть путь к файлу |
 | `transcribe.py` | Загрузить в MinIO + YC S3, транскрибировать через SpeechKit, диаризация |
 | `n8n_workflow.json` | Импортировать в n8n (Settings → Import Workflow) |
@@ -60,7 +62,7 @@ cd /opt/telemost-recorder
 python3 -m venv .venv
 ./.venv/bin/pip install boto3 requests
 mkdir -p /opt/recordings/telemost
-chmod +x start_meeting.sh join_meeting.sh stop_meeting.sh run_start.sh run_join.sh run_stop.sh run_transcribe.sh
+chmod +x start_meeting.sh join_meeting.sh stop_meeting.sh run_start.sh run_join.sh run_stop.sh run_transcribe.sh set_recorder_display_name.sh save_avatar_from_telegram.sh
 ```
 
 ### 2. OAuth-приложение Телемост
@@ -109,6 +111,23 @@ chmod 600 /opt/telemost-recorder/.env.telemost
 
 Импортировать `n8n_workflow.json` через **Settings → Import Workflow**.
 Настроить credentials: Telegram Bot + Postgres (Supabase) + SSH.
+
+#### Имя и аватар бота **в Телемосте** (лобби перед «Подключиться»)
+
+Это **не** настройки профиля Telegram-бота в мессенджере, а имя и фото участника, который заходит в конференцию через Puppeteer (`recorder.js`).
+
+- **Файл на сервере:** рядом со скриптами создаётся/обновляется `telemost_recorder_profile.json` (ключ `display_name`). Его читают `start_meeting.sh` и `join_meeting.sh` и экспортируют `BOT_DISPLAY_NAME` перед запуском `recorder.js`.
+- **Аватар:** скрипт `save_avatar_from_telegram.sh` кладёт изображение в `.telemost_bot_avatar.jpg`. `recorder.js` подхватывает его автоматически (или путь из `BOT_LOBBY_AVATAR_PATH` в `.env.telemost`).
+- **Переменные n8n:** задайте **`TELEGRAM_ADMIN_CHAT_IDS`** — список числовых `chat.id` через запятую. Команды `/telemost_name` и `/telemost_photo` сработают **только** для этих чатов.
+- **Секрет на сервере:** в `.env.telemost` добавьте **`TELEGRAM_BOT_TOKEN`** (тот же токен, что у бота в n8n), иначе загрузка фото с Telegram на диск сервера невозможна.
+
+Команды в чате с ботом (для админов):
+
+- `/telemost_name EN Meeting recorder` — сохранить отображаемое имя в лобби для следующих записей.
+- `/telemost_name --reset` — убрать имя из профиля и снова использовать `BOT_DISPLAY_NAME` из `.env.telemost`.
+- Отправьте **изображение** с подписью **`/telemost_photo`** — файл скачается на сервер как аватар лобби.
+
+Загрузка фото в UI Телемоста зависит от вёрстки: в `recorder.js` перебираются скрытые `input[type="file"]` и типичные кнопки/тестиды. Если релиз Телемоста изменил разметку, по логу строка `[recorder] Аватар лобби:` подскажет, сработало ли.
 
 #### Саммари после транскрипта (OpenRouter)
 
@@ -160,6 +179,9 @@ curl -X POST "https://ВАШ-N8N/webhook/ВАШ-ID/telemost-recall-transcript" -
 /meeting_start Еженедельный синк   — создать встречу (API) и начать запись
 /meeting_join https://telemost.yandex.ru/j/…  — записать встречу по чужой ссылке (в том же сообщении)
 /meeting_stop                      — остановить запись и запустить транскрибацию
+/telemost_name Имя в комнате      — имя бота в лобби Телемоста (только админы, см. TELEGRAM_ADMIN_CHAT_IDS)
+/telemost_name --reset             — сброс имени к BOT_DISPLAY_NAME из .env
+/telemost_photo                    — подпись к фото: аватар в лобби (только админы, нужен TELEGRAM_BOT_TOKEN на сервере)
 ```
 
 Опционально после ссылки в `/meeting_join` можно указать **название** для отчёта (текст после URL). Если не указать — подставится заголовок вида «Встреча по ссылке» с датой.
@@ -172,7 +194,7 @@ curl -X POST "https://ВАШ-N8N/webhook/ВАШ-ID/telemost-recall-transcript" -
 
 ### SSH ноды в workflow
 
-В workflow используются SSH-ноды (`Start Meeting`, `Join Meeting`, `Stop Meeting`, `Run Transcription`), которые выполняют команды на сервере и загружают секреты из `/opt/telemost-recorder/.env.telemost`.
+В workflow используются SSH-ноды (`Start Meeting`, `Join Meeting`, `Stop Meeting`, `Run Transcription`, `SSH Set Telemost Name`, `SSH Save Telemost Avatar`), которые выполняют команды на сервере; секреты Телемоста и записи подхватываются из `/opt/telemost-recorder/.env.telemost` внутри `run_*.sh` и дочерних скриптов.
 
 ## Формат транскрипта
 
