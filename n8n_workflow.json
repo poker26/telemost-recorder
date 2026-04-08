@@ -27,8 +27,8 @@
     {
       "parameters": {
         "mode": "expression",
-        "numberOutputs": 6,
-        "output": "={{ (() => { const token = (($json.message.text || $json.message.caption || '').trim().split(/\\s+/)[0] || '').toLowerCase(); const raw = token.split('@')[0]; const ix = ['/meeting_start','/meeting_stop','/meeting_join','/telemost_name','/telemost_photo'].indexOf(raw); return ix >= 0 ? ix : 5; })() }}"
+        "numberOutputs": 5,
+        "output": "={{ (() => { const token = (($json.message.text || $json.message.caption || '').trim().split(/\\s+/)[0] || '').toLowerCase(); const raw = token.split('@')[0]; const ix = ['/meeting_start','/meeting_stop','/meeting_join','/telemost_name'].indexOf(raw); return ix >= 0 ? ix : 4; })() }}"
       },
       "name": "Route Command",
       "type": "n8n-nodes-base.switch",
@@ -711,111 +711,8 @@
     },
     {
       "parameters": {
-        "jsCode": "const trigger = $('Telegram Trigger').first().json;\nconst msg = trigger.message || {};\nconst chatId = String(msg.chat?.id ?? '');\nconst photos = msg.photo;\nif (!photos || photos.length === 0) {\n  return [\n    {\n      json: {\n        chat_id: chatId,\n        error:\n          'Пришлите фото с подписью /telemost_photo (картинка в том же сообщении).',\n      },\n    },\n  ];\n}\nconst best = photos[photos.length - 1];\nconst fileId = best && best.file_id;\nif (!fileId) {\n  return [{ json: { chat_id: chatId, error: 'Не удалось получить file_id фото.' } }];\n}\nreturn [{ json: { chat_id: chatId, file_id: fileId } }];"
-      },
-      "name": "Build Telemost Photo Command",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        -704,
-        1296
-      ],
-      "id": "45662d89-0d91-41bb-a98a-71737e652edb"
-    },
-    {
-      "parameters": {
-        "conditions": {
-          "string": [
-            {
-              "value1": "={{ $json.error }}",
-              "operation": "isNotEmpty"
-            }
-          ]
-        }
-      },
-      "name": "Telemost Photo Has Error?",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 1,
-      "position": [
-        -544,
-        1296
-      ],
-      "id": "d5b259fd-5c55-4067-8fa9-fbbd3d9e8390"
-    },
-    {
-      "parameters": {
-        "chatId": "={{ $json.chat_id }}",
-        "text": "=❌ `{{ $json.error }}`",
-        "additionalFields": {
-          "parse_mode": "Markdown"
-        }
-      },
-      "name": "Send Telemost Photo Validation Error",
-      "type": "n8n-nodes-base.telegram",
-      "typeVersion": 1,
-      "position": [
-        -336,
-        1296
-      ],
-      "id": "256d0e8a-6ec9-4ae7-b2ba-977f39dafbef",
-      "webhookId": "488ee400-f24c-445e-9b22-b76496a7a26e",
-      "credentials": {
-        "telegramApi": {
-          "id": "WMJHaEdWDU1NG3bS",
-          "name": "TeleTranscript"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "resource": "file",
-        "fileId": "={{ $json.file_id }}",
-        "additionalFields": {}
-      },
-      "name": "Telegram Download Avatar",
-      "type": "n8n-nodes-base.telegram",
-      "typeVersion": 1.2,
-      "position": [
-        -416,
-        1504
-      ],
-      "id": "e829b3fd-7984-41b9-bfe9-872d9cfb9a7a",
-      "webhookId": "cbe0f820-6e2b-4f37-add5-3ec052d5ff65",
-      "credentials": {
-        "telegramApi": {
-          "id": "WMJHaEdWDU1NG3bS",
-          "name": "TeleTranscript"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "chatId": "={{ $('Telegram Trigger').item.json.message.from.id }}",
-        "text": "=✅ Аватар для лобби Телемоста сохранён на сервере.\n\nПри следующем входе бот попытается подставить это фото как свой аватар",
-        "additionalFields": {
-          "parse_mode": "Markdown"
-        }
-      },
-      "name": "Send Telemost Avatar OK",
-      "type": "n8n-nodes-base.telegram",
-      "typeVersion": 1,
-      "position": [
-        -32,
-        1504
-      ],
-      "id": "6b226719-d44d-41df-8035-b8b074d532e5",
-      "webhookId": "d19abd60-dbe1-4741-ac87-156902281190",
-      "credentials": {
-        "telegramApi": {
-          "id": "WMJHaEdWDU1NG3bS",
-          "name": "TeleTranscript"
-        }
-      }
-    },
-    {
-      "parameters": {
         "chatId": "={{ $('Telegram Trigger').first().json.message.chat.id }}",
-        "text": "Неизвестная команда.\n\nДоступные команды:\n/meeting\\_start [название] — создать встречу и записать\n/meeting\\_join https://… — записать по чужой ссылке\n/meeting\\_stop — остановить запись и транскрибировать\n/telemost\\_name Имя — имя участника в лобби Телемоста\n/telemost\\_name --reset — сброс к BOT\\_DISPLAY\\_NAME из .env\n/telemost\\_photo — фото в том же сообщении, подпись /telemost\\_photo",
+        "text": "Неизвестная команда.\n\nДоступные команды:\n/meeting\\_start [название] — создать встречу и записать\n/meeting\\_join https://… — записать по чужой ссылке\n/meeting\\_stop — остановить запись и транскрибировать\n/telemost\\_name Имя — имя участника в лобби Телемоста\n/telemost\\_name --reset — сброс к BOT\\_DISPLAY\\_NAME из .env",
         "additionalFields": {
           "parse_mode": "Markdown"
         }
@@ -833,28 +730,6 @@
         "telegramApi": {
           "id": "WMJHaEdWDU1NG3bS",
           "name": "TeleTranscript"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "operation": "upload",
-        "bucketName": "telemost",
-        "fileName": "avatar.jpg",
-        "additionalFields": {}
-      },
-      "type": "n8n-nodes-base.s3",
-      "typeVersion": 1,
-      "position": [
-        -224,
-        1504
-      ],
-      "id": "142eb1c3-e843-4eb3-b138-8237f5fcd3e4",
-      "name": "Upload a file",
-      "credentials": {
-        "s3": {
-          "id": "k1RurPHLgbHiLdxb",
-          "name": "S3 account"
         }
       }
     }
@@ -898,13 +773,6 @@
         [
           {
             "node": "Build Telemost Name Command",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Build Telemost Photo Command",
             "type": "main",
             "index": 0
           }
@@ -981,46 +849,6 @@
         [
           {
             "node": "Send Telemost Name OK",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Build Telemost Photo Command": {
-      "main": [
-        [
-          {
-            "node": "Telemost Photo Has Error?",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Telemost Photo Has Error?": {
-      "main": [
-        [
-          {
-            "node": "Send Telemost Photo Validation Error",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Telegram Download Avatar",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Telegram Download Avatar": {
-      "main": [
-        [
-          {
-            "node": "Upload a file",
             "type": "main",
             "index": 0
           }
@@ -1241,17 +1069,6 @@
         [
           {
             "node": "Execute Meeting Summary",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Upload a file": {
-      "main": [
-        [
-          {
-            "node": "Send Telemost Avatar OK",
             "type": "main",
             "index": 0
           }

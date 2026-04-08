@@ -32,10 +32,6 @@ if [ -f "$PROFILE_JSON" ]; then
   if [ -n "$DISPLAY_OVERRIDE" ]; then
     export BOT_DISPLAY_NAME="$DISPLAY_OVERRIDE"
   fi
-  AVATAR_OVERRIDE="$(jq -r '.avatar_path // empty' "$PROFILE_JSON")"
-  if [ -n "$AVATAR_OVERRIDE" ] && [ -f "$AVATAR_OVERRIDE" ]; then
-    export BOT_LOBBY_AVATAR_PATH="$AVATAR_OVERRIDE"
-  fi
 fi
 
 if [ -z "${TELEMOST_TOKEN:-}" ]; then

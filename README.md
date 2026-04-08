@@ -33,7 +33,6 @@ SpeechKit принимает аудио только из Yandex Object Storage 
 |------|-----------|
 | `start_meeting.sh` | Создать конференцию через Telemost API, запустить recorder |
 | `set_recorder_display_name.sh` | Сохранить имя в лобби Телемоста (`telemost_recorder_profile.json`) |
-| `save_avatar_from_telegram.sh` | Скачать фото из Telegram → `.telemost_bot_avatar.jpg` |
 | `stop_meeting.sh` | Остановить FFmpeg, вернуть путь к файлу |
 | `transcribe.py` | Загрузить в MinIO + YC S3, транскрибировать через SpeechKit, диаризация |
 | `n8n_workflow.json` | Импортировать в n8n (Settings → Import Workflow) |
@@ -63,7 +62,7 @@ npm install
 python3 -m venv .venv
 ./.venv/bin/pip install boto3 requests
 mkdir -p /opt/recordings/telemost
-chmod +x start_meeting.sh join_meeting.sh stop_meeting.sh run_start.sh run_join.sh run_stop.sh run_transcribe.sh set_recorder_display_name.sh save_avatar_from_telegram.sh
+chmod +x start_meeting.sh join_meeting.sh stop_meeting.sh run_start.sh run_join.sh run_stop.sh run_transcribe.sh set_recorder_display_name.sh
 ```
 
 ### 2. OAuth-приложение Телемост
@@ -115,23 +114,18 @@ chmod 600 /opt/telemost-recorder/.env.telemost
 
 Узел **Route Command** — Switch в режиме **Expression** (см. [документацию Switch](https://docs.n8n.io/integrations/builtin/core-nodes/n8n-nodes-base.switch/)): задаётся **Number of Outputs** и выражение **Output Index** (число 0…N−1). Так можно на одном узле развести все команды бота. Устаревший Switch **typeVersion 1** в режиме Rules/Expression физически имеет только четыре выхода; для большего числа веток нужен Switch **v2+** (см. [PR #7499](https://github.com/n8n-io/n8n/pull/7499)) — в экспорте репозитория для **Route Command** указан **typeVersion 3**.
 
-#### Имя и аватар бота **в Телемосте** (лобби перед «Подключиться»)
+#### Имя бота **в Телемосте** (лобби перед «Подключиться»)
 
-Это **не** настройки профиля Telegram-бота в мессенджере, а имя и фото участника, который заходит в конференцию через Puppeteer (`recorder.js`).
+Это **не** настройки профиля Telegram-бота в мессенджере, а отображаемое имя участника, который заходит в конференцию через Puppeteer (`recorder.js`).
 
 - **Файл на сервере:** рядом со скриптами создаётся/обновляется `telemost_recorder_profile.json` (ключ `display_name`). Его читают `start_meeting.sh` и `join_meeting.sh` и экспортируют `BOT_DISPLAY_NAME` перед запуском `recorder.js`.
-- **Аватар:** в n8n файл скачивается узлом **Telegram** (resource *File*, get + **download**), затем узлом **S3** загружается в MinIO под стабильным ключом (по умолчанию `avatar.jpg` в бакете `MINIO_BUCKET_MEDIA`). Перед заходом в лобби `recorder.js` скачивает этот объект в `.telemost_bot_avatar.jpg` (те же переменные `MINIO_*`, что и у `transcribe.py`, плюс опционально `MINIO_AVATAR_OBJECT_KEY`). Либо задаётся явный путь `BOT_LOBBY_AVATAR_PATH` в `.env.telemost`.
-- **Credentials:** для Telegram — **TeleTranscript**; для MinIO в n8n — S3-compatible credential с тем же endpoint и ключами, что и на сервере. Отдельный `TELEGRAM_BOT_TOKEN` в env n8n для этой ветки не нужен. Скрипт `save_avatar_from_telegram.sh` оставлен для ручного запуска на сервере при необходимости.
 
 Команды в чате с ботом:
 
 - `/telemost_name EN Meeting recorder` — сохранить отображаемое имя в лобби для следующих записей.
 - `/telemost_name --reset` — убрать имя из профиля и снова использовать `BOT_DISPLAY_NAME` из `.env.telemost`.
-- Отправьте **изображение** с подписью **`/telemost_photo`** — файл попадёт в MinIO; рекордер подхватит его при следующем запуске.
 
-Загрузка фото в UI Телемоста зависит от вёрстки: в `recorder.js` перебираются скрытые `input[type="file"]` и типичные кнопки/тестиды. Если релиз Телемоста изменил разметку, по логу строка `[recorder] Аватар лобби:` подскажет, сработало ли.
-
-**Важно:** `/telemost_name` выполняет SSH на сервере (профиль имени). `/telemost_photo` обрабатывается только в n8n (Telegram → MinIO). Для всех пользователей бота имя и аватар общие — если бот не только для личного пользования, имеет смысл ограничить доступ (или вернуть проверку по `chat.id` в узлах **Build Telemost Name/Photo** в n8n).
+**Важно:** `/telemost_name` выполняет SSH на сервере (`set_recorder_display_name.sh`). При необходимости ограничьте доступ по `chat.id` в узле **Build Telemost Name Command** в n8n.
 
 #### Саммари после транскрипта (OpenRouter)
 
@@ -150,7 +144,7 @@ chmod 600 /opt/telemost-recorder/.env.telemost
 4. В `/opt/telemost-recorder/.env.telemost` задать `TELEMOST_FINISH_WEBHOOK_URL` (обязательно для вызова n8n).
 5. **Куда слать транскрипт в Telegram:** при старте через бота узел **Start Meeting** передаёт `chat.id` на сервер; он сохраняется в `/tmp/telemost_meeting.json` как `telegram_chat_id` и попадает в webhook как `chat_id`. Если встречу запускали не через обновлённый workflow, задайте запасной вариант: `TELEGRAM_NOTIFY_CHAT_ID` в `.env.telemost`.
 
-Перезапуск отдельных сервисов не нужен: `run_start.sh` подхватывает `.env.telemost` при каждом `/meeting_start`. После обновления репозитория на сервере записи выполните в `/opt/telemost-recorder` команду **`npm install`** (зависимости Node, в т.ч. загрузка аватара из MinIO). Импортируйте заново **`n8n_workflow.json`** в n8n при необходимости (или вручную добавьте второй аргумент в команду SSH «Start Meeting», см. репозиторий).
+Перезапуск отдельных сервисов не нужен: `run_start.sh` подхватывает `.env.telemost` при каждом `/meeting_start`. После обновления репозитория на сервере записи выполните в `/opt/telemost-recorder` команду **`npm install`** (зависимости Node для `recorder.js`). Импортируйте заново **`n8n_workflow.json`** в n8n при необходимости (или вручную добавьте второй аргумент в команду SSH «Start Meeting», см. репозиторий).
 
 Проверка лога бота: `tail -f /tmp/telemost_recorder.log` — при старте будет строка про задан или не задан `TELEMOST_FINISH_WEBHOOK_URL`.
 
@@ -185,7 +179,6 @@ curl -X POST "https://ВАШ-N8N/webhook/ВАШ-ID/telemost-recall-transcript" -
 /meeting_stop                      — остановить запись и запустить транскрибацию
 /telemost_name Имя в комнате      — имя бота в лобби Телемоста
 /telemost_name --reset             — сброс имени к BOT_DISPLAY_NAME из .env
-/telemost_photo                    — подпись к фото: аватар в MinIO → рекордер подхватывает при записи
 ```
 
 Опционально после ссылки в `/meeting_join` можно указать **название** для отчёта (текст после URL). Если не указать — подставится заголовок вида «Встреча по ссылке» с датой.
@@ -198,7 +191,7 @@ curl -X POST "https://ВАШ-N8N/webhook/ВАШ-ID/telemost-recall-transcript" -
 
 ### SSH ноды в workflow
 
-В workflow используются SSH-ноды (`Start Meeting`, `Join Meeting`, `Stop Meeting`, `Run Transcription`, `SSH Set Telemost Name`), которые выполняют команды на сервере; секреты Телемоста и записи подхватываются из `/opt/telemost-recorder/.env.telemost` внутри `run_*.sh` и дочерних скриптов. Аватар для лобби задаётся в n8n через загрузку в MinIO, не через SSH.
+В workflow используются SSH-ноды (`Start Meeting`, `Join Meeting`, `Stop Meeting`, `Run Transcription`, `SSH Set Telemost Name`), которые выполняют команды на сервере; секреты Телемоста и записи подхватываются из `/opt/telemost-recorder/.env.telemost` внутри `run_*.sh` и дочерних скриптов.
 
 ## Формат транскрипта
 
@@ -213,7 +206,7 @@ curl -X POST "https://ВАШ-N8N/webhook/ВАШ-ID/telemost-recall-transcript" -
 ## Ограничения
 
 - **`/meeting_start`** создаёт конференцию через Cloud API (live stream); нужен `TELEMOST_TOKEN`. **`/meeting_join`** токен API для создания встречи не использует — только ссылка и тот же пайплайн записи/остановки.
-- Комната ожидания: пока организатор не пустил бота, полноценной записи эфира нет.
+- Комната ожидания: при `waiting_room_level: PUBLIC` в `start_meeting.sh` гость попадает во встречу сразу; иначе организатор может оставить бота в очереди.
 - SpeechKit: до 4 часов / 1 ГБ на файл
 - Результаты распознавания хранятся на серверах SpeechKit 3 суток
 - Диаризация: номера спикеров без имён (сопоставление вручную)
