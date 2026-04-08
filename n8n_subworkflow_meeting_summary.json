@@ -17,7 +17,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const OPENROUTER_MODEL = 'openai/gpt-4o-mini';\nconst MAX_TRANSCRIPT_CHARS = 100000;\nconst SYSTEM_PROMPT = [\n  'You are a meeting transcript analyst. The entire answer MUST be in Russian, as structured Markdown.',\n  '',\n  'Rules:',\n  '- Do not invent facts that are not in the transcript.',\n  '- If the meeting was brainstorming without formal decisions, say so; list only ideas that appear in the text.',\n  '- List decisions and agreements only when they clearly follow from the text.',\n  '',\n  'Structure: 1) Brief 2) Discussion topics 3) Decisions/agreements (or none) 4) Ideas 5) Open questions and next steps.',\n  'Human-editable template in repo: docs/meeting_summary_prompt.md',\n].join('\\n');\nconst input = $input.first().json;\nconst title = String(input.title ?? '');\nconst rawTranscript = String(input.transcript ?? '');\nconst chatId = String(input.chat_id ?? '');\nconst source = String(input.source ?? '');\nlet transcript = rawTranscript;\nif (transcript.length > MAX_TRANSCRIPT_CHARS) {\n  transcript = transcript.slice(0, MAX_TRANSCRIPT_CHARS) + '\\n\\n[truncated for API]';\n}\nconst userContent = ['Title: ' + title, 'Source: ' + (source || 'n/a'), '', 'Transcript:', transcript].join('\\n');\nconst requestBody = {\n  model: OPENROUTER_MODEL,\n  messages: [\n    { role: 'system', content: SYSTEM_PROMPT },\n    { role: 'user', content: userContent },\n  ],\n};\nreturn [{ json: { chat_id: chatId, title, source, requestBody } }];"
+        "jsCode": "const OPENROUTER_MODEL = 'openai/gpt-4o-mini';\nconst MAX_TRANSCRIPT_CHARS = 100000;\nconst SYSTEM_PROMPT = [\n  'You are a meeting transcript analyst. The entire answer MUST be in Russian, as structured Markdown.',\n  '',\n  'Rules:',\n  '- Do not invent facts that are not in the transcript. If there is nothing substantive to summarize, say so in one short paragraph — do not invent topics, decisions, or ideas.',\n  '- If the meeting was brainstorming without formal decisions, say so; list only ideas that appear in the text.',\n  '- List decisions and agreements only when they clearly follow from the text.',\n  '',\n  'Structure (only when the transcript contains substantive speech): 1) Brief 2) Discussion topics 3) Decisions/agreements (or none) 4) Ideas 5) Open questions and next steps.',\n  'If the transcript has no substantive content, ignore this structure and output one short honest paragraph only.',\n  'Human-editable template in repo: docs/meeting_summary_prompt.md',\n].join('\\n');\n\nfunction isTranscriptEffectivelyEmpty(raw) {\n  const t = String(raw ?? '').trim();\n  if (!t) return true;\n  if (/^ERROR:/im.test(t)) return false;\n  let stripped = t.replace(/\\n\\s*\\[Спикер[^\\]]+\\]\\s*/gi, '\\n');\n  stripped = stripped.replace(/\\[[^\\]]+\\]/g, ' ');\n  stripped = stripped.replace(/\\s+/g, ' ').trim();\n  if (!stripped) return true;\n  if (!/[0-9A-Za-zА-Яа-яЁё]/.test(stripped)) return true;\n  return false;\n}\n\nconst input = $input.first().json;\nconst title = String(input.title ?? '');\nconst rawTranscript = String(input.transcript ?? '');\nconst chatId = String(input.chat_id ?? '');\nconst source = String(input.source ?? '');\n\nif (/^ERROR:/im.test(rawTranscript.trim())) {\n  return [\n    {\n      json: {\n        chat_id: chatId,\n        title,\n        source,\n        skip_openrouter: 'yes',\n        summary_text:\n          'Транскрибация не дала текста для саммари (модель не вызывалась):\\n\\n' +\n          rawTranscript.trim(),\n      },\n    },\n  ];\n}\n\nif (isTranscriptEffectivelyEmpty(rawTranscript)) {\n  return [\n    {\n      json: {\n        chat_id: chatId,\n        title,\n        source,\n        skip_openrouter: 'yes',\n        summary_text:\n          'В расшифровке нет содержательной речи — саммари не формировалось (модель не вызывалась).',\n      },\n    },\n  ];\n}\n\nlet transcript = rawTranscript;\nif (transcript.length > MAX_TRANSCRIPT_CHARS) {\n  transcript = transcript.slice(0, MAX_TRANSCRIPT_CHARS) + '\\n\\n[truncated for API]';\n}\nconst userContent = ['Title: ' + title, 'Source: ' + (source || 'n/a'), '', 'Transcript:', transcript].join('\\n');\nconst requestBody = {\n  model: OPENROUTER_MODEL,\n  messages: [\n    { role: 'system', content: SYSTEM_PROMPT },\n    { role: 'user', content: userContent },\n  ],\n};\nreturn [\n  {\n    json: {\n      chat_id: chatId,\n      title,\n      source,\n      skip_openrouter: 'no',\n      requestBody,\n    },\n  },\n];"
       },
       "id": "sw-build-002",
       "name": "Build OpenRouter Request",
@@ -25,6 +25,21 @@
       "typeVersion": 2,
       "position": [
         460,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "expression",
+        "numberOutputs": 2,
+        "output": "={{ $json.skip_openrouter === 'yes' ? 0 : 1 }}"
+      },
+      "id": "sw-route-008",
+      "name": "Route Summary Path",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [
+        580,
         300
       ]
     },
@@ -165,6 +180,24 @@
     },
     "Build OpenRouter Request": {
       "main": [
+        [
+          {
+            "node": "Route Summary Path",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route Summary Path": {
+      "main": [
+        [
+          {
+            "node": "Send Summary",
+            "type": "main",
+            "index": 0
+          }
+        ],
         [
           {
             "node": "OpenRouter Chat",

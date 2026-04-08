@@ -769,7 +769,9 @@
     {
       "parameters": {
         "resource": "file",
+        "operation": "get",
         "fileId": "={{ $json.file_id }}",
+        "download": true,
         "additionalFields": {}
       },
       "name": "Telegram Download Avatar",

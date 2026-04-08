@@ -166,9 +166,16 @@ async function syncLobbyAvatarFromMinioToDefaultFile() {
     }
 
     const bytes = await getResponse.Body.transformToByteArray();
-    writeFileSync(destinationPath, Buffer.from(bytes));
+    const buffer = Buffer.from(bytes);
+    if (buffer.length === 0) {
+      console.error(
+        "[recorder] MinIO: объект аватара пустой (0 байт). Проверьте n8n: узел Telegram «File» с download, затем S3.",
+      );
+      return;
+    }
+    writeFileSync(destinationPath, buffer);
     console.error(
-      `[recorder] Аватар лобби: скачан из MinIO ${bucket}/${objectKey} → ${destinationPath}`,
+      `[recorder] Аватар лобби: скачан из MinIO ${bucket}/${objectKey} → ${destinationPath} (${buffer.length} байт)`,
     );
   } catch (syncError) {
     const code = syncError?.code;
