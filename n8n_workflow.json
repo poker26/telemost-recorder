@@ -9,7 +9,12 @@
       "name": "Telegram Trigger",
       "type": "n8n-nodes-base.telegramTrigger",
       "typeVersion": 1,
-      "position": [200, 300]
+      "position": [200, 300],
+      "credentials": {
+        "telegramApi": {
+          "name": "TeleTranscript"
+        }
+      }
     },
     {
       "parameters": {
@@ -68,6 +73,11 @@
       "name": "Send Start Error",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1,
+      "credentials": {
+        "telegramApi": {
+          "name": "TeleTranscript"
+        }
+      },
       "position": [1260, 80]
     },
     {
@@ -81,6 +91,11 @@
       "name": "Send Join URL",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1,
+      "credentials": {
+        "telegramApi": {
+          "name": "TeleTranscript"
+        }
+      },
       "position": [1260, 240]
     },
 
@@ -138,6 +153,11 @@
       "name": "Send Join Error",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1,
+      "credentials": {
+        "telegramApi": {
+          "name": "TeleTranscript"
+        }
+      },
       "position": [1260, -60]
     },
     {
@@ -151,6 +171,11 @@
       "name": "Send Join Started",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1,
+      "credentials": {
+        "telegramApi": {
+          "name": "TeleTranscript"
+        }
+      },
       "position": [1260, 100]
     },
 
@@ -199,6 +224,11 @@
       "name": "Send Stop Error",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1,
+      "credentials": {
+        "telegramApi": {
+          "name": "TeleTranscript"
+        }
+      },
       "position": [1260, 360]
     },
     {
@@ -212,6 +242,11 @@
       "name": "Notify Stop",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1,
+      "credentials": {
+        "telegramApi": {
+          "name": "TeleTranscript"
+        }
+      },
       "position": [1260, 520]
     },
     {
@@ -259,6 +294,11 @@
       "name": "Send Transcribe Error",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1,
+      "credentials": {
+        "telegramApi": {
+          "name": "TeleTranscript"
+        }
+      },
       "position": [2040, 380]
     },
     {
@@ -299,6 +339,11 @@
       "name": "Send Transcript",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1,
+      "credentials": {
+        "telegramApi": {
+          "name": "TeleTranscript"
+        }
+      },
       "position": [2370, 620]
     },
     {
@@ -395,6 +440,11 @@
       "name": "Send Telemost Name Validation Error",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1,
+      "credentials": {
+        "telegramApi": {
+          "name": "TeleTranscript"
+        }
+      },
       "position": [960, 580]
     },
     {
@@ -442,6 +492,11 @@
       "name": "Send Telemost Name SSH Error",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1,
+      "credentials": {
+        "telegramApi": {
+          "name": "TeleTranscript"
+        }
+      },
       "position": [1500, 660]
     },
     {
@@ -455,6 +510,11 @@
       "name": "Send Telemost Name OK",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1,
+      "credentials": {
+        "telegramApi": {
+          "name": "TeleTranscript"
+        }
+      },
       "position": [1500, 860]
     },
     {
@@ -493,6 +553,11 @@
       "name": "Send Telemost Photo Validation Error",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1,
+      "credentials": {
+        "telegramApi": {
+          "name": "TeleTranscript"
+        }
+      },
       "position": [960, 820]
     },
     {
@@ -540,6 +605,11 @@
       "name": "Send Telemost Avatar SSH Error",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1,
+      "credentials": {
+        "telegramApi": {
+          "name": "TeleTranscript"
+        }
+      },
       "position": [1500, 900]
     },
     {
@@ -553,6 +623,11 @@
       "name": "Send Telemost Avatar OK",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1,
+      "credentials": {
+        "telegramApi": {
+          "name": "TeleTranscript"
+        }
+      },
       "position": [1500, 1100]
     },
     {
@@ -566,6 +641,11 @@
       "name": "Unknown Command",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1,
+      "credentials": {
+        "telegramApi": {
+          "name": "TeleTranscript"
+        }
+      },
       "position": [660, 600]
     }
   ],

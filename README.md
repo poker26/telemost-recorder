@@ -110,7 +110,7 @@ chmod 600 /opt/telemost-recorder/.env.telemost
 ### 6. n8n workflow
 
 Импортировать `n8n_workflow.json` через **Settings → Import Workflow**.
-Настроить credentials: Telegram Bot + Postgres (Supabase) + SSH.
+Настроить credentials: **TeleTranscript** (Telegram Bot API в списке credential n8n) + Postgres (Supabase) + SSH.
 
 Узел **Route Command** — Switch в режиме **Expression** (см. [документацию Switch](https://docs.n8n.io/integrations/builtin/core-nodes/n8n-nodes-base.switch/)): задаётся **Number of Outputs** и выражение **Output Index** (число 0…N−1). Так можно на одном узле развести все команды бота. Устаревший Switch **typeVersion 1** в режиме Rules/Expression физически имеет только четыре выхода; для большего числа веток нужен Switch **v2+** (см. [PR #7499](https://github.com/n8n-io/n8n/pull/7499)) — в экспорте репозитория для **Route Command** указан **typeVersion 3**.
 

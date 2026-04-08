@@ -38,7 +38,7 @@
       "position": [580, 400],
       "credentials": {
         "telegramApi": {
-          "name": "Telegram Bot"
+          "name": "TeleTranscript"
         }
       }
     },
@@ -94,7 +94,7 @@
       "position": [1380, 280],
       "credentials": {
         "telegramApi": {
-          "name": "Telegram Bot"
+          "name": "TeleTranscript"
         }
       }
     },
@@ -142,7 +142,7 @@
       "position": [1820, 560],
       "credentials": {
         "telegramApi": {
-          "name": "Telegram Bot"
+          "name": "TeleTranscript"
         }
       }
     },

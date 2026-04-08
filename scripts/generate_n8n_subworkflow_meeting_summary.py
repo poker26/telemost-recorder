@@ -162,7 +162,7 @@ def main() -> None:
                 "type": "n8n-nodes-base.telegram",
                 "typeVersion": 1.2,
                 "position": [1340, 200],
-                "credentials": {"telegramApi": {"name": "Telegram Bot"}},
+                "credentials": {"telegramApi": {"name": "TeleTranscript"}},
             },
             {
                 "parameters": {
@@ -175,7 +175,7 @@ def main() -> None:
                 "type": "n8n-nodes-base.telegram",
                 "typeVersion": 1.2,
                 "position": [1340, 400],
-                "credentials": {"telegramApi": {"name": "Telegram Bot"}},
+                "credentials": {"telegramApi": {"name": "TeleTranscript"}},
             },
         ],
         "connections": {
