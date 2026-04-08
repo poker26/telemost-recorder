@@ -59,6 +59,7 @@ SpeechKit принимает аудио только из Yandex Object Storage 
 ```bash
 apt install ffmpeg jq python3-venv -y
 cd /opt/telemost-recorder
+npm install
 python3 -m venv .venv
 ./.venv/bin/pip install boto3 requests
 mkdir -p /opt/recordings/telemost
@@ -149,7 +150,7 @@ chmod 600 /opt/telemost-recorder/.env.telemost
 4. В `/opt/telemost-recorder/.env.telemost` задать `TELEMOST_FINISH_WEBHOOK_URL` (обязательно для вызова n8n).
 5. **Куда слать транскрипт в Telegram:** при старте через бота узел **Start Meeting** передаёт `chat.id` на сервер; он сохраняется в `/tmp/telemost_meeting.json` как `telegram_chat_id` и попадает в webhook как `chat_id`. Если встречу запускали не через обновлённый workflow, задайте запасной вариант: `TELEGRAM_NOTIFY_CHAT_ID` в `.env.telemost`.
 
-Перезапуск отдельных сервисов не нужен: `run_start.sh` подхватывает `.env.telemost` при каждом `/meeting_start`. После обновления репозитория **импортируйте заново** `n8n_workflow.json` (или вручную добавьте второй аргумент в команду SSH «Start Meeting», см. репозиторий).
+Перезапуск отдельных сервисов не нужен: `run_start.sh` подхватывает `.env.telemost` при каждом `/meeting_start`. После обновления репозитория на сервере записи выполните в `/opt/telemost-recorder` команду **`npm install`** (зависимости Node, в т.ч. загрузка аватара из MinIO). Импортируйте заново **`n8n_workflow.json`** в n8n при необходимости (или вручную добавьте второй аргумент в команду SSH «Start Meeting», см. репозиторий).
 
 Проверка лога бота: `tail -f /tmp/telemost_recorder.log` — при старте будет строка про задан или не задан `TELEMOST_FINISH_WEBHOOK_URL`.
 
@@ -197,7 +198,7 @@ curl -X POST "https://ВАШ-N8N/webhook/ВАШ-ID/telemost-recall-transcript" -
 
 ### SSH ноды в workflow
 
-В workflow используются SSH-ноды (`Start Meeting`, `Join Meeting`, `Stop Meeting`, `Run Transcription`, `SSH Set Telemost Name`, `SSH Save Telemost Avatar`), которые выполняют команды на сервере; секреты Телемоста и записи подхватываются из `/opt/telemost-recorder/.env.telemost` внутри `run_*.sh` и дочерних скриптов.
+В workflow используются SSH-ноды (`Start Meeting`, `Join Meeting`, `Stop Meeting`, `Run Transcription`, `SSH Set Telemost Name`), которые выполняют команды на сервере; секреты Телемоста и записи подхватываются из `/opt/telemost-recorder/.env.telemost` внутри `run_*.sh` и дочерних скриптов. Аватар для лобби задаётся в n8n через загрузку в MinIO, не через SSH.
 
 ## Формат транскрипта
 

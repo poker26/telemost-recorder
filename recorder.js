@@ -19,7 +19,6 @@
  *   Финализация: удаление state, опционально POST TELEMOST_FINISH_WEBHOOK_URL.
  */
 
-import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import puppeteer from "puppeteer";
 import {
   writeFileSync,
@@ -146,6 +145,10 @@ async function syncLobbyAvatarFromMinioToDefaultFile() {
   const destinationPath = join(recorderScriptDir, ".telemost_bot_avatar.jpg");
 
   try {
+    const s3Module = await import("@aws-sdk/client-s3");
+    const S3Client = s3Module.S3Client;
+    const GetObjectCommand = s3Module.GetObjectCommand;
+
     const s3Client = new S3Client({
       region: "us-east-1",
       endpoint: endpointUrl,
@@ -168,7 +171,14 @@ async function syncLobbyAvatarFromMinioToDefaultFile() {
       `[recorder] Аватар лобби: скачан из MinIO ${bucket}/${objectKey} → ${destinationPath}`,
     );
   } catch (syncError) {
+    const code = syncError?.code;
     const message = syncError?.message || String(syncError);
+    if (code === "ERR_MODULE_NOT_FOUND" || message.includes("@aws-sdk/client-s3")) {
+      console.error(
+        "[recorder] MinIO: пакет @aws-sdk/client-s3 не установлен. В каталоге проекта выполните: npm install",
+      );
+      return;
+    }
     console.error(
       `[recorder] MinIO: не удалось скачать аватар (${bucket}/${objectKey}): ${message}`,
     );
