@@ -118,16 +118,17 @@ chmod 600 /opt/telemost-recorder/.env.telemost
 
 - **Файл на сервере:** рядом со скриптами создаётся/обновляется `telemost_recorder_profile.json` (ключ `display_name`). Его читают `start_meeting.sh` и `join_meeting.sh` и экспортируют `BOT_DISPLAY_NAME` перед запуском `recorder.js`.
 - **Аватар:** скрипт `save_avatar_from_telegram.sh` кладёт изображение в `.telemost_bot_avatar.jpg`. `recorder.js` подхватывает его автоматически (или путь из `BOT_LOBBY_AVATAR_PATH` в `.env.telemost`).
-- **Переменные n8n:** задайте **`TELEGRAM_ADMIN_CHAT_IDS`** — список числовых `chat.id` через запятую. Команды `/telemost_name` и `/telemost_photo` сработают **только** для этих чатов.
 - **Секрет на сервере:** в `.env.telemost` добавьте **`TELEGRAM_BOT_TOKEN`** (тот же токен, что у бота в n8n), иначе загрузка фото с Telegram на диск сервера невозможна.
 
-Команды в чате с ботом (для админов):
+Команды в чате с ботом:
 
 - `/telemost_name EN Meeting recorder` — сохранить отображаемое имя в лобби для следующих записей.
 - `/telemost_name --reset` — убрать имя из профиля и снова использовать `BOT_DISPLAY_NAME` из `.env.telemost`.
 - Отправьте **изображение** с подписью **`/telemost_photo`** — файл скачается на сервер как аватар лобби.
 
 Загрузка фото в UI Телемоста зависит от вёрстки: в `recorder.js` перебираются скрытые `input[type="file"]` и типичные кнопки/тестиды. Если релиз Телемоста изменил разметку, по логу строка `[recorder] Аватар лобби:` подскажет, сработало ли.
+
+**Важно:** `/telemost_name` и `/telemost_photo` выполняют SSH-команды на сервере для всех пользователей бота одинаково. Если бот не только для личного пользования, имеет смысл ограничить, кто может с ним переписываться (или вернуть проверку по `chat.id` в узлах **Build Telemost Name/Photo** в n8n).
 
 #### Саммари после транскрипта (OpenRouter)
 
@@ -179,9 +180,9 @@ curl -X POST "https://ВАШ-N8N/webhook/ВАШ-ID/telemost-recall-transcript" -
 /meeting_start Еженедельный синк   — создать встречу (API) и начать запись
 /meeting_join https://telemost.yandex.ru/j/…  — записать встречу по чужой ссылке (в том же сообщении)
 /meeting_stop                      — остановить запись и запустить транскрибацию
-/telemost_name Имя в комнате      — имя бота в лобби Телемоста (только админы, см. TELEGRAM_ADMIN_CHAT_IDS)
+/telemost_name Имя в комнате      — имя бота в лобби Телемоста
 /telemost_name --reset             — сброс имени к BOT_DISPLAY_NAME из .env
-/telemost_photo                    — подпись к фото: аватар в лобби (только админы, нужен TELEGRAM_BOT_TOKEN на сервере)
+/telemost_photo                    — подпись к фото: аватар в лобби (нужен TELEGRAM_BOT_TOKEN на сервере)
 ```
 
 Опционально после ссылки в `/meeting_join` можно указать **название** для отчёта (текст после URL). Если не указать — подставится заголовок вида «Встреча по ссылке» с датой.
