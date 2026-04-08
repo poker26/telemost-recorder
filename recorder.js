@@ -547,6 +547,19 @@ console.error("[recorder] Страница загружена");
 
 await new Promise((r) => setTimeout(r, 3000));
 
+const lobbyAvatarPath = resolveLobbyAvatarAbsolutePath();
+const lobbyExtraMsDefault = lobbyAvatarPath ? 2500 : 0;
+const lobbyExtraMs =
+  process.env.TELEMOST_LOBBY_EXTRA_MS !== undefined
+    ? parseInt(process.env.TELEMOST_LOBBY_EXTRA_MS, 10)
+    : lobbyExtraMsDefault;
+if (lobbyExtraMs > 0) {
+  console.error(
+    `[recorder] Лобби: доп. ожидание ${lobbyExtraMs} мс (SPA/аватар; задайте TELEMOST_LOBBY_EXTRA_MS=0 чтобы отключить)`,
+  );
+  await new Promise((r) => setTimeout(r, lobbyExtraMs));
+}
+
 const BOT_NAME = process.env.BOT_DISPLAY_NAME || "Бот-записи";
 
 const nameInput = await page.$('input[placeholder*="имя"], input[name*="name"], input[type="text"]');
@@ -556,7 +569,6 @@ if (nameInput) {
   console.error(`[recorder] Имя бота: ${BOT_NAME}`);
 }
 
-const lobbyAvatarPath = resolveLobbyAvatarAbsolutePath();
 if (lobbyAvatarPath) {
   try {
     const lobbyAvatarStat = statSync(lobbyAvatarPath);
@@ -584,6 +596,82 @@ function listActiveFramesForLobbyScan() {
   return page.frames();
 }
 
+function lobbyAvatarDebugEnabled() {
+  const raw = process.env.TELEMOST_LOBBY_DEBUG;
+  return raw === "1" || raw === "true" || raw === "yes";
+}
+
+async function countFileInputsDeep(frame) {
+  return frame.evaluate(() => {
+    let count = 0;
+    function walk(root) {
+      count += root.querySelectorAll('input[type="file"]').length;
+      root.querySelectorAll("*").forEach((element) => {
+        if (element.shadowRoot) {
+          walk(element.shadowRoot);
+        }
+      });
+    }
+    walk(document);
+    return count;
+  });
+}
+
+async function getNthFileInputElementDeep(frame, indexZeroBased) {
+  const handle = await frame.evaluateHandle((index) => {
+    const collected = [];
+    function walk(root) {
+      root.querySelectorAll('input[type="file"]').forEach((input) => collected.push(input));
+      root.querySelectorAll("*").forEach((element) => {
+        if (element.shadowRoot) {
+          walk(element.shadowRoot);
+        }
+      });
+    }
+    walk(document);
+    return collected[index] || null;
+  }, indexZeroBased);
+  const element = handle.asElement();
+  if (element) {
+    return element;
+  }
+  await handle.dispose();
+  return null;
+}
+
+async function logLobbyAvatarDebugState(pathForChromium) {
+  console.error("[recorder] TELEMOST_LOBBY_DEBUG=1 — фреймы и input[type=file] (включая shadow)");
+  const frames = listActiveFramesForLobbyScan();
+  for (const frame of frames) {
+    let frameUrl = "";
+    try {
+      frameUrl = frame.url();
+    } catch {
+      frameUrl = "(url недоступен)";
+    }
+    const deepCount = await countFileInputsDeep(frame);
+    let summary = null;
+    try {
+      summary = await frame.evaluate(() => {
+        const labels = [...document.querySelectorAll("button,[role='button']")]
+          .map((button) => (button.textContent || "").trim().replace(/\s+/g, " ").slice(0, 72))
+          .filter(Boolean)
+          .slice(0, 30);
+        return {
+          shallowFileInputs: document.querySelectorAll('input[type="file"]').length,
+          buttonLabels: labels,
+        };
+      });
+    } catch (summaryErr) {
+      summary = { error: summaryErr?.message || String(summaryErr) };
+    }
+    console.error(
+      `[recorder] TELEMOST_LOBBY_DEBUG frame=${frameUrl} fileInputsDeep=${deepCount} ${JSON.stringify(summary)}`,
+    );
+  }
+  console.error(`[recorder] TELEMOST_LOBBY_DEBUG путь аватара: ${pathForChromium}`);
+}
+
 async function tryUploadFileToEveryInputInAllFrames(pathForChromium) {
   const frames = listActiveFramesForLobbyScan();
   for (const frame of frames) {
@@ -593,23 +681,29 @@ async function tryUploadFileToEveryInputInAllFrames(pathForChromium) {
     } catch {
       frameUrl = "(url недоступен)";
     }
-    let handles = [];
+
+    let deepCount = 0;
     try {
-      handles = await frame.$$('input[type="file"]');
-    } catch (frameErr) {
+      deepCount = await countFileInputsDeep(frame);
+    } catch (countErr) {
       console.error(
-        `[recorder] фрейм ${frameUrl}: не удалось искать input file — ${frameErr?.message || String(frameErr)}`,
+        `[recorder] фрейм ${frameUrl}: подсчёт file inputs — ${countErr?.message || String(countErr)}`,
       );
       continue;
     }
-    for (const inputHandle of handles) {
+
+    for (let index = 0; index < deepCount; index += 1) {
+      const inputElement = await getNthFileInputElementDeep(frame, index);
+      if (!inputElement) {
+        continue;
+      }
       try {
-        await inputHandle.uploadFile(pathForChromium);
+        await inputElement.uploadFile(pathForChromium);
         await new Promise((r) => setTimeout(r, 800));
-        return { ok: true, frameUrl };
+        return { ok: true, frameUrl, inputIndex: index, depth: "shadow_aware" };
       } catch (uploadErr) {
         console.error(
-          `[recorder] uploadFile (${frameUrl}): ${uploadErr?.message || String(uploadErr)} (путь: ${pathForChromium})`,
+          `[recorder] uploadFile (${frameUrl} #${index}): ${uploadErr?.message || String(uploadErr)} (путь: ${pathForChromium})`,
         );
       }
     }
@@ -620,8 +714,24 @@ async function tryUploadFileToEveryInputInAllFrames(pathForChromium) {
 async function frameHasAvatarHintElement(frame) {
   try {
     return await frame.evaluate((hints) => {
+      function querySelectorDeep(selector, root) {
+        const rootNode = root || document;
+        const direct = rootNode.querySelector(selector);
+        if (direct) {
+          return direct;
+        }
+        for (const element of rootNode.querySelectorAll("*")) {
+          if (element.shadowRoot) {
+            const inner = querySelectorDeep(selector, element.shadowRoot);
+            if (inner) {
+              return inner;
+            }
+          }
+        }
+        return null;
+      }
       for (const selector of hints) {
-        if (document.querySelector(selector)) {
+        if (querySelectorDeep(selector, document)) {
           return true;
         }
       }
@@ -634,8 +744,24 @@ async function frameHasAvatarHintElement(frame) {
 
 async function clickFirstAvatarHintInFrame(frame) {
   return frame.evaluate((hints) => {
+    function querySelectorDeep(selector, root) {
+      const rootNode = root || document;
+      const direct = rootNode.querySelector(selector);
+      if (direct) {
+        return direct;
+      }
+      for (const element of rootNode.querySelectorAll("*")) {
+        if (element.shadowRoot) {
+          const inner = querySelectorDeep(selector, element.shadowRoot);
+          if (inner) {
+            return inner;
+          }
+        }
+      }
+      return null;
+    }
     for (const selector of hints) {
-      const element = document.querySelector(selector);
+      const element = querySelectorDeep(selector, document);
       if (element && typeof element.click === "function") {
         element.click();
         return selector;
@@ -643,6 +769,34 @@ async function clickFirstAvatarHintInFrame(frame) {
     }
     return null;
   }, LOBBY_AVATAR_SELECTOR_HINTS);
+}
+
+async function clickShortPhotoRelatedButtonDeep(frame) {
+  return frame.evaluate(() => {
+    function walk(root) {
+      const candidates = root.querySelectorAll("button,[role='button'],[role='menuitem'],a");
+      for (const node of candidates) {
+        const text = (node.textContent || "").trim().replace(/\s+/g, " ");
+        if (text.length === 0 || text.length > 48) {
+          continue;
+        }
+        if (/(фото|портрет|аватар|селфи|камера)/i.test(text)) {
+          node.click();
+          return text;
+        }
+      }
+      for (const element of root.querySelectorAll("*")) {
+        if (element.shadowRoot) {
+          const label = walk(element.shadowRoot);
+          if (label) {
+            return label;
+          }
+        }
+      }
+      return null;
+    }
+    return walk(document);
+  });
 }
 
 async function tryFileChooserAcceptAfterAvatarClickInFrames(pathForChromium, fileChooserTimeoutMs) {
@@ -683,6 +837,69 @@ async function tryFileChooserAcceptAfterAvatarClickInFrames(pathForChromium, fil
   return { ok: false };
 }
 
+async function frameHasPhotoRelatedTextButton(frame) {
+  try {
+    return await frame.evaluate(() => {
+      function walk(root) {
+        const candidates = root.querySelectorAll("button,[role='button'],[role='menuitem'],a");
+        for (const node of candidates) {
+          const text = (node.textContent || "").trim().replace(/\s+/g, " ");
+          if (text.length > 0 && text.length <= 48 && /(фото|портрет|аватар|селфи|камера)/i.test(text)) {
+            return true;
+          }
+        }
+        for (const element of root.querySelectorAll("*")) {
+          if (element.shadowRoot && walk(element.shadowRoot)) {
+            return true;
+          }
+        }
+        return false;
+      }
+      return walk(document);
+    });
+  } catch {
+    return false;
+  }
+}
+
+async function tryFileChooserAfterPhotoTextButtonInFrames(pathForChromium, fileChooserTimeoutMs) {
+  const frames = listActiveFramesForLobbyScan();
+  const timeoutMs = Math.max(2000, fileChooserTimeoutMs || 5000);
+
+  for (const frame of frames) {
+    const hasTextButton = await frameHasPhotoRelatedTextButton(frame);
+    if (!hasTextButton) {
+      continue;
+    }
+
+    let frameUrl = "";
+    try {
+      frameUrl = frame.url();
+    } catch {
+      frameUrl = "(url недоступен)";
+    }
+
+    try {
+      const [fileChooser, labelUsed] = await Promise.all([
+        page.waitForFileChooser({ timeout: timeoutMs }),
+        clickShortPhotoRelatedButtonDeep(frame),
+      ]);
+      if (!labelUsed) {
+        continue;
+      }
+      await fileChooser.accept([pathForChromium]);
+      await new Promise((r) => setTimeout(r, 700));
+      return { ok: true, frameUrl, method: "file_chooser_text", label: labelUsed };
+    } catch (chooserErr) {
+      console.error(
+        `[recorder] waitForFileChooser (текст кнопки, ${frameUrl}): ${chooserErr?.message || String(chooserErr)}`,
+      );
+    }
+  }
+
+  return { ok: false };
+}
+
 async function tryApplyLobbyAvatar(absoluteImagePath) {
   if (!absoluteImagePath || !existsSync(absoluteImagePath)) {
     return { applied: false, reason: "file_missing" };
@@ -692,6 +909,10 @@ async function tryApplyLobbyAvatar(absoluteImagePath) {
   const fileChooserMs = parseInt(process.env.TELEMOST_LOBBY_FILE_CHOOSER_MS || "5000", 10);
 
   try {
+    if (lobbyAvatarDebugEnabled()) {
+      await logLobbyAvatarDebugState(pathForChromium);
+    }
+
     let uploadResult = await tryUploadFileToEveryInputInAllFrames(pathForChromium);
     if (uploadResult.ok) {
       await new Promise((r) => setTimeout(r, 700));
@@ -699,6 +920,7 @@ async function tryApplyLobbyAvatar(absoluteImagePath) {
         applied: true,
         method: "file_input_all_frames",
         frameUrl: uploadResult.frameUrl,
+        inputIndex: uploadResult.inputIndex,
       };
     }
 
@@ -712,6 +934,19 @@ async function tryApplyLobbyAvatar(absoluteImagePath) {
         method: chooserResult.method,
         frameUrl: chooserResult.frameUrl,
         selector: chooserResult.selector,
+      };
+    }
+
+    const chooserTextResult = await tryFileChooserAfterPhotoTextButtonInFrames(
+      pathForChromium,
+      fileChooserMs,
+    );
+    if (chooserTextResult.ok) {
+      return {
+        applied: true,
+        method: chooserTextResult.method,
+        frameUrl: chooserTextResult.frameUrl,
+        label: chooserTextResult.label,
       };
     }
 
@@ -735,6 +970,28 @@ async function tryApplyLobbyAvatar(absoluteImagePath) {
         );
       }
     }
+
+    for (const frame of listActiveFramesForLobbyScan()) {
+      let frameUrl = "";
+      try {
+        frameUrl = frame.url();
+      } catch {
+        frameUrl = "(url недоступен)";
+      }
+      try {
+        const labelClicked = await clickShortPhotoRelatedButtonDeep(frame);
+        if (labelClicked) {
+          console.error(
+            `[recorder] Лобби: клик по кнопке «${labelClicked}» (${frameUrl})`,
+          );
+        }
+      } catch (textClickErr) {
+        console.error(
+          `[recorder] клик по подписи фото (${frameUrl}): ${textClickErr?.message || String(textClickErr)}`,
+        );
+      }
+    }
+
     await new Promise((r) => setTimeout(r, 600));
 
     uploadResult = await tryUploadFileToEveryInputInAllFrames(pathForChromium);
@@ -744,6 +1001,7 @@ async function tryApplyLobbyAvatar(absoluteImagePath) {
         applied: true,
         method: "after_avatar_click_all_frames",
         frameUrl: uploadResult.frameUrl,
+        inputIndex: uploadResult.inputIndex,
       };
     }
   } catch (err) {
@@ -751,6 +1009,9 @@ async function tryApplyLobbyAvatar(absoluteImagePath) {
     return { applied: false, reason: err.message };
   }
 
+  console.error(
+    "[recorder] Аватар не применён: нет доступного механизма файла в лобби. Подсказка: TELEMOST_LOBBY_DEBUG=1 в .env — снимок фреймов и кнопок в лог. У гостя Телемост может не показывать загрузку своего фото (только пресеты/аккаунт).",
+  );
   return { applied: false, reason: "no_file_control" };
 }
 
