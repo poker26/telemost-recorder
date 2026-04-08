@@ -385,12 +385,19 @@
     },
     {
       "parameters": {
-        "source": "database",
         "workflowId": {
           "__rl": true,
-          "value": "a1b2c3d4-e5f6-7890-abcd-ef00summary01",
-          "mode": "list",
-          "cachedResultName": "Telemost — Meeting Summary (sub-workflow)"
+          "value": "RvKugkmwOpUFs4b6",
+          "mode": "id",
+          "cachedResultUrl": "/workflow/RvKugkmwOpUFs4b6"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
         },
         "options": {
           "waitForSubWorkflow": true

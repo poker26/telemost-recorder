@@ -136,7 +136,7 @@ chmod 600 /opt/telemost-recorder/.env.telemost
 
 1. Импортировать **`n8n_subworkflow_meeting_summary.json`** отдельным workflow, **активировать** его. У первого узла (**When Executed by Another Workflow**) в режиме **Input data mode** должно быть **Accept all data** (`passthrough` в JSON) — иначе n8n покажет предупреждение и родительский **Execute Workflow** не сможет передать произвольный объект.
 2. В узле **OpenRouter Chat** выбрать уже настроенный в n8n credential типа **Header Auth** (часто имя `OpenRouter`): заголовок **`Authorization`**, значение **`Bearer <ваш_ключ_OpenRouter>`**. Если имя credential другое — создайте или перепривяжите в узле.
-3. Импортировать или обновить **`n8n_workflow.json`** и **`n8n_webhook_meeting_finish.json`**. В узле **Execute Meeting Summary** при необходимости заново выберите sub-workflow по имени (id в файле: `a1b2c3d4-e5f6-7890-abcd-ef00summary01`; после импорта n8n может показать другой id — важно указать правильный workflow в списке).
+3. Импортировать или обновить **`n8n_workflow.json`** и **`n8n_webhook_meeting_finish.json`**. В узле **Execute Meeting Summary** sub-workflow вызывается **по id** (`RvKugkmwOpUFs4b6` в репозитории). На другом инстансе n8n замените **value** на id вашего импортированного workflow саммари.
 4. Модель и системный промпт настраиваются в узле **Build OpenRouter Request** в sub-workflow; подробный русскоязычный шаблон — в `docs/meeting_summary_prompt.md`. Узел **Prepare Summary Payload** в репозитории — **Edit Fields (Set)** с маппингом из `$json`, не Code с `$input` (иначе в n8n возможна ошибка «Referenced node doesn't exist» для несуществующего узла `input`).
 
 ### 7. Автофиниш встречи в Телемосте (без `/meeting_stop`)
