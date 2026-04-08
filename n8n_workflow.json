@@ -859,76 +859,7 @@
       }
     }
   ],
-  "pinData": {
-    "Telegram Trigger": [
-      {
-        "json": {
-          "update_id": 94678003,
-          "message": {
-            "message_id": 56,
-            "from": {
-              "id": 4683166,
-              "is_bot": false,
-              "first_name": "Oleg",
-              "last_name": "Pokrovskiy",
-              "username": "hippo26",
-              "language_code": "ru",
-              "is_premium": true
-            },
-            "chat": {
-              "id": 4683166,
-              "first_name": "Oleg",
-              "last_name": "Pokrovskiy",
-              "username": "hippo26",
-              "type": "private"
-            },
-            "date": 1775673587,
-            "photo": [
-              {
-                "file_id": "AgACAgIAAxkBAAMpadabBq0TGYvc7pHl3BuW2UIf4LcAAokPaxt3KbhKiYEybhHxNS4BAAMCAANzAAM7BA",
-                "file_unique_id": "AQADiQ9rG3cpuEp4",
-                "file_size": 1570,
-                "width": 90,
-                "height": 67
-              },
-              {
-                "file_id": "AgACAgIAAxkBAAMpadabBq0TGYvc7pHl3BuW2UIf4LcAAokPaxt3KbhKiYEybhHxNS4BAAMCAANtAAM7BA",
-                "file_unique_id": "AQADiQ9rG3cpuEpy",
-                "file_size": 23441,
-                "width": 320,
-                "height": 240
-              },
-              {
-                "file_id": "AgACAgIAAxkBAAMpadabBq0TGYvc7pHl3BuW2UIf4LcAAokPaxt3KbhKiYEybhHxNS4BAAMCAAN4AAM7BA",
-                "file_unique_id": "AQADiQ9rG3cpuEp9",
-                "file_size": 98412,
-                "width": 800,
-                "height": 600
-              },
-              {
-                "file_id": "AgACAgIAAxkBAAMpadabBq0TGYvc7pHl3BuW2UIf4LcAAokPaxt3KbhKiYEybhHxNS4BAAMCAAN5AAM7BA",
-                "file_unique_id": "AQADiQ9rG3cpuEp-",
-                "file_size": 178937,
-                "width": 1280,
-                "height": 960
-              }
-            ],
-            "caption": "/telemost_photo",
-            "caption_entities": [
-              {
-                "offset": 0,
-                "length": 15,
-                "type": "bot_command"
-              }
-            ]
-          }
-        },
-        "pairedItem": {
-          "item": 0
-        }
-      }
-    ]
-  },
+  "pinData": {},
   "connections": {
     "Telegram Trigger": {
       "main": [
