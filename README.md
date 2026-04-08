@@ -119,7 +119,7 @@ chmod 600 /opt/telemost-recorder/.env.telemost
 Это **не** настройки профиля Telegram-бота в мессенджере, а имя и фото участника, который заходит в конференцию через Puppeteer (`recorder.js`).
 
 - **Файл на сервере:** рядом со скриптами создаётся/обновляется `telemost_recorder_profile.json` (ключ `display_name`). Его читают `start_meeting.sh` и `join_meeting.sh` и экспортируют `BOT_DISPLAY_NAME` перед запуском `recorder.js`.
-- **Аватар:** скрипт `save_avatar_from_telegram.sh` кладёт изображение в `.telemost_bot_avatar.jpg`. `recorder.js` подхватывает его автоматически (или путь из `BOT_LOBBY_AVATAR_PATH` в `.env.telemost`).
+- **Аватар:** скрипт `save_avatar_from_telegram.sh` кладёт изображение в `.telemost_bot_avatar.jpg`. `recorder.js` подхватывает его автоматически (или путь из `BOT_LOBBY_AVATAR_PATH` в `.env.telemost`). На сервере у скриптов должны быть права на выполнение (см. `chmod` в п. «Установка»); иначе n8n по SSH вернёт `Permission denied`.
 - **Секрет на сервере:** в `.env.telemost` добавьте **`TELEGRAM_BOT_TOKEN`** (тот же токен, что у бота в n8n), иначе загрузка фото с Telegram на диск сервера невозможна.
 
 Команды в чате с ботом:
