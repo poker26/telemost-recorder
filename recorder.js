@@ -131,6 +131,54 @@ function buildMinioEndpointUrlForS3Client() {
   return `${scheme}://${raw.replace(/\/$/, "")}`;
 }
 
+async function readS3ObjectBodyToBuffer(body) {
+  if (!body) {
+    return Buffer.alloc(0);
+  }
+  if (typeof body.transformToByteArray === "function") {
+    return Buffer.from(await body.transformToByteArray());
+  }
+  const chunks = [];
+  for await (const chunk of body) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  }
+  return Buffer.concat(chunks);
+}
+
+function detectImageExtensionFromBuffer(buffer) {
+  if (buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {
+    return ".jpg";
+  }
+  if (
+    buffer.length >= 4 &&
+    buffer[0] === 0x89 &&
+    buffer[1] === 0x50 &&
+    buffer[2] === 0x4e &&
+    buffer[3] === 0x47
+  ) {
+    return ".png";
+  }
+  if (
+    buffer.length >= 12 &&
+    buffer[0] === 0x52 &&
+    buffer[1] === 0x49 &&
+    buffer[2] === 0x46 &&
+    buffer[3] === 0x46 &&
+    buffer[8] === 0x57 &&
+    buffer[9] === 0x45 &&
+    buffer[10] === 0x42 &&
+    buffer[11] === 0x50
+  ) {
+    return ".webp";
+  }
+  return "";
+}
+
+function bufferLooksLikeS3XmlError(buffer) {
+  const head = buffer.slice(0, 80).toString("utf8").trimStart();
+  return head.startsWith("<") || head.startsWith("<?xml");
+}
+
 async function syncLobbyAvatarFromMinioToDefaultFile() {
   const endpointUrl = buildMinioEndpointUrlForS3Client();
   const accessKeyId = process.env.MINIO_ACCESS_KEY?.trim();
@@ -142,7 +190,9 @@ async function syncLobbyAvatarFromMinioToDefaultFile() {
     return;
   }
 
-  const destinationPath = join(recorderScriptDir, ".telemost_bot_avatar.jpg");
+  const jpgPath = join(recorderScriptDir, ".telemost_bot_avatar.jpg");
+  const pngPath = join(recorderScriptDir, ".telemost_bot_avatar.png");
+  const webpPath = join(recorderScriptDir, ".telemost_bot_avatar.webp");
 
   try {
     const s3Module = await import("@aws-sdk/client-s3");
@@ -165,17 +215,57 @@ async function syncLobbyAvatarFromMinioToDefaultFile() {
       return;
     }
 
-    const bytes = await getResponse.Body.transformToByteArray();
-    const buffer = Buffer.from(bytes);
+    const buffer = await readS3ObjectBodyToBuffer(getResponse.Body);
+
     if (buffer.length === 0) {
       console.error(
-        "[recorder] MinIO: объект аватара пустой (0 байт). Проверьте n8n: узел Telegram «File» с download, затем S3.",
+        `[recorder] MinIO: объект ${bucket}/${objectKey} пустой (0 байт) — в бакете нет данных`,
       );
       return;
     }
+
+    if (bufferLooksLikeS3XmlError(buffer)) {
+      console.error(
+        `[recorder] MinIO: ответ похож на XML-ошибку S3, не на картинку. Первые 300 символов:\n${buffer.slice(0, 300).toString("utf8")}`,
+      );
+      return;
+    }
+
+    const ext = detectImageExtensionFromBuffer(buffer);
+    if (!ext) {
+      console.error(
+        `[recorder] MinIO: скачано ${buffer.length} байт, но сигнатура не JPEG/PNG/WebP — в лобби не подставляю. Hex: ${buffer.slice(0, 16).toString("hex")}`,
+      );
+      return;
+    }
+
+    try {
+      unlinkSync(jpgPath);
+    } catch {
+      // ignore
+    }
+    try {
+      unlinkSync(pngPath);
+    } catch {
+      // ignore
+    }
+    try {
+      unlinkSync(webpPath);
+    } catch {
+      // ignore
+    }
+
+    let destinationPath = jpgPath;
+    if (ext === ".png") {
+      destinationPath = pngPath;
+    } else if (ext === ".webp") {
+      destinationPath = webpPath;
+    }
     writeFileSync(destinationPath, buffer);
+
+    const absoluteForPuppeteer = resolve(destinationPath);
     console.error(
-      `[recorder] Аватар лобби: скачан из MinIO ${bucket}/${objectKey} → ${destinationPath} (${buffer.length} байт)`,
+      `[recorder] Аватар лобби: MinIO ${bucket}/${objectKey} → ${absoluteForPuppeteer} (${buffer.length} байт, ${ext})`,
     );
   } catch (syncError) {
     const code = syncError?.code;
@@ -203,9 +293,17 @@ function resolveLobbyAvatarAbsolutePath() {
       `[recorder] BOT_LOBBY_AVATAR_PATH задан, файл не найден: ${absoluteConfigured}`,
     );
   }
-  const defaultPath = join(recorderScriptDir, ".telemost_bot_avatar.jpg");
-  if (existsSync(defaultPath)) {
-    return defaultPath;
+  const jpgPath = join(recorderScriptDir, ".telemost_bot_avatar.jpg");
+  const pngPath = join(recorderScriptDir, ".telemost_bot_avatar.png");
+  const webpPath = join(recorderScriptDir, ".telemost_bot_avatar.webp");
+  if (existsSync(jpgPath)) {
+    return resolve(jpgPath);
+  }
+  if (existsSync(pngPath)) {
+    return resolve(pngPath);
+  }
+  if (existsSync(webpPath)) {
+    return resolve(webpPath);
   }
   return null;
 }
@@ -460,7 +558,14 @@ if (nameInput) {
 
 const lobbyAvatarPath = resolveLobbyAvatarAbsolutePath();
 if (lobbyAvatarPath) {
-  console.error(`[recorder] Аватар лобби (файл): ${lobbyAvatarPath}`);
+  try {
+    const lobbyAvatarStat = statSync(lobbyAvatarPath);
+    console.error(
+      `[recorder] Аватар лобби (файл): ${lobbyAvatarPath} (${lobbyAvatarStat.size} байт)`,
+    );
+  } catch {
+    console.error(`[recorder] Аватар лобби (файл): ${lobbyAvatarPath}`);
+  }
 }
 
 async function tryApplyLobbyAvatar(absoluteImagePath) {
@@ -468,15 +573,19 @@ async function tryApplyLobbyAvatar(absoluteImagePath) {
     return { applied: false, reason: "file_missing" };
   }
 
+  const pathForChromium = resolve(absoluteImagePath);
+
   const uploadToEveryFileInput = async () => {
     const handles = await page.$$('input[type="file"]');
     for (const inputHandle of handles) {
       try {
-        await inputHandle.uploadFile(absoluteImagePath);
+        await inputHandle.uploadFile(pathForChromium);
         await new Promise((r) => setTimeout(r, 800));
         return true;
-      } catch {
-        // пробуем следующий input
+      } catch (uploadErr) {
+        console.error(
+          `[recorder] uploadFile попытка: ${uploadErr?.message || String(uploadErr)} (путь: ${pathForChromium})`,
+        );
       }
     }
     return false;
