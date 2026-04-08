@@ -13,53 +13,14 @@
     },
     {
       "parameters": {
-        "dataType": "string",
-        "value1": "={{ (($json.message.text || $json.message.caption || '').trim().split(/\\s+/)[0] || '') }}",
-        "rules": {
-          "rules": [
-            {
-              "value2": "/meeting_start",
-              "output": 0
-            },
-            {
-              "value2": "/meeting_stop",
-              "output": 1
-            },
-            {
-              "value2": "/meeting_join",
-              "output": 2
-            }
-          ]
-        },
-        "fallbackOutput": 3
+        "mode": "expression",
+        "numberOutputs": 6,
+        "output": "={{ (() => { const token = (($json.message.text || $json.message.caption || '').trim().split(/\\s+/)[0] || '').toLowerCase(); const raw = token.split('@')[0]; const ix = ['/meeting_start','/meeting_stop','/meeting_join','/telemost_name','/telemost_photo'].indexOf(raw); return ix >= 0 ? ix : 5; })() }}"
       },
       "name": "Route Command",
       "type": "n8n-nodes-base.switch",
-      "typeVersion": 1,
+      "typeVersion": 3,
       "position": [420, 300]
-    },
-    {
-      "parameters": {
-        "dataType": "string",
-        "value1": "={{ (($json.message.text || $json.message.caption || '').trim().split(/\\s+/)[0] || '') }}",
-        "rules": {
-          "rules": [
-            {
-              "value2": "/telemost_name",
-              "output": 0
-            },
-            {
-              "value2": "/telemost_photo",
-              "output": 1
-            }
-          ]
-        },
-        "fallbackOutput": 2
-      },
-      "name": "Route Telemost Command",
-      "type": "n8n-nodes-base.switch",
-      "typeVersion": 1,
-      "position": [520, 440]
     },
 
     {
@@ -617,11 +578,6 @@
         [{ "node": "Start Meeting", "type": "main", "index": 0 }],
         [{ "node": "Stop Meeting", "type": "main", "index": 0 }],
         [{ "node": "Build Join Command", "type": "main", "index": 0 }],
-        [{ "node": "Route Telemost Command", "type": "main", "index": 0 }]
-      ]
-    },
-    "Route Telemost Command": {
-      "main": [
         [{ "node": "Build Telemost Name Command", "type": "main", "index": 0 }],
         [{ "node": "Build Telemost Photo Command", "type": "main", "index": 0 }],
         [{ "node": "Unknown Command", "type": "main", "index": 0 }]
